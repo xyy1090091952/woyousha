@@ -18,6 +18,9 @@ struct AddItemView: View {
     // 环境变量：数据库操作上下文 (类似于 DB connection)
     @Environment(\.modelContext) private var modelContext
     
+    // 编辑模式：如果传入了 itemToEdit，说明是编辑现有物品
+    var itemToEdit: Item?
+    
     // @State 标记的变量是页面内部的状态
     // 当用户输入内容时，这些变量会自动更新 (类似于 Vue 的 v-model)
     @State private var name: String = ""
@@ -46,14 +49,29 @@ struct AddItemView: View {
                         VStack(spacing: 12) {
                             // 图片展示区域
                             if let image = selectedImage {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(height: 200)
-                                    .cornerRadius(12)
-                                    .shadow(radius: 4)
-                                    .overlay(alignment: .topTrailing) {
-                                        // 删除图片按钮
+                                ZStack {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(height: 200)
+                                        .cornerRadius(12)
+                                        .shadow(radius: 4)
+                                    
+                                    // AI 处理中的 Loading 遮罩
+                                    if isProcessingImage {
+                                        ZStack {
+                                            Color.black.opacity(0.3)
+                                                .cornerRadius(12)
+                                            ProgressView("AI 抠图中...")
+                                                .foregroundStyle(.white)
+                                                .tint(.white)
+                                        }
+                                        .frame(height: 200)
+                                    }
+                                }
+                                .overlay(alignment: .topTrailing) {
+                                    // 删除图片按钮
+                                    if !isProcessingImage {
                                         Button {
                                             withAnimation {
                                                 selectedImage = nil
@@ -68,21 +86,16 @@ struct AddItemView: View {
                                         }
                                         .padding(8)
                                     }
-                                
-                                // AI 抠图按钮
-                                Button {
-                                    removeBackground()
-                                } label: {
-                                    if isProcessingImage {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Label("一键 AI 抠图", systemImage: "wand.and.stars")
-                                            .font(.subheadline)
-                                    }
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(isProcessingImage)
+                                
+                                // 重新选择/拍照按钮 (替代原来的抠图按钮)
+                                if !isProcessingImage {
+                                    Button("更换图片") {
+                                        showActionSheet = true
+                                    }
+                                    .font(.subheadline)
+                                    .buttonStyle(.borderless)
+                                }
                                 
                             } else {
                                 // 没有图片时的占位符 - 使用统一入口，点击后弹出 ActionSheet
@@ -94,7 +107,7 @@ struct AddItemView: View {
                                         Text("添加照片")
                                             .font(.headline)
                                             .foregroundStyle(.primary)
-                                        Text("支持拍照或从相册选择")
+                                        Text("拍照或相册 (自动抠图)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -167,7 +180,7 @@ struct AddItemView: View {
                         .lineLimit(3...6) // 限制显示 3-6 行高度
                 }
             }
-            .navigationTitle("添加新物品")
+            .navigationTitle(itemToEdit == nil ? "添加新物品" : "编辑物品")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // 左上角取消按钮
@@ -182,7 +195,7 @@ struct AddItemView: View {
                     Button("保存") {
                         saveItem()
                     }
-                    .disabled(name.isEmpty) // 如果名字没填，禁用按钮 (表单验证)
+                    .disabled(name.isEmpty || isProcessingImage) // 名字为空或正在处理图片时禁用
                 }
             }
             .sheet(isPresented: $isCameraPresented) {
@@ -195,7 +208,33 @@ struct AddItemView: View {
                        let image = UIImage(data: data) {
                         await MainActor.run {
                             selectedImage = image
+                            // 自动触发抠图
+                            removeBackground()
                         }
+                    }
+                }
+            }
+            // 监听相机关闭事件，如果拍了新照片，自动抠图
+            .onChange(of: isCameraPresented) { oldValue, newValue in
+                if oldValue == true && newValue == false {
+                    // 相机关闭了，如果有图片，且不是编辑模式下的原图（简单判断：如果 selectedImage 存在）
+                    // 为了避免重复抠图，这里假设拍照就是为了新图。
+                    // 只要 selectedImage 不为空，就处理。
+                    if selectedImage != nil {
+                        removeBackground()
+                    }
+                }
+            }
+            // 页面加载时填充数据 (如果是编辑模式)
+            .onAppear {
+                if let item = itemToEdit {
+                    name = item.name
+                    category = item.category
+                    quantity = item.quantity
+                    location = item.location
+                    note = item.note
+                    if let data = item.imageData {
+                        selectedImage = UIImage(data: data)
                     }
                 }
             }
@@ -228,7 +267,7 @@ struct AddItemView: View {
             } else {
                 await MainActor.run {
                     isProcessingImage = false
-                    errorMessage = "抠图失败，请重试"
+                    errorMessage = "自动抠图失败，已保留原图"
                     showErrorAlert = true
                 }
             }
@@ -242,19 +281,30 @@ struct AddItemView: View {
         // jpegData 会自动把透明背景填充为白色，导致抠图效果失效
         let imageData = selectedImage?.pngData()
         
-        // 2. 创建新物品对象
-        let newItem = Item(
-            name: name,
-            imageData: imageData, // 保存图片
-            category: category,
-            quantity: quantity,
-            location: location,
-            note: note
-        )
-        
-        // 3. 插入数据库
-        do {
+        if let item = itemToEdit {
+            // --- 更新现有物品 ---
+            item.name = name
+            item.imageData = imageData
+            item.category = category
+            item.quantity = quantity
+            item.location = location
+            item.note = note
+            // item.updatedDate = Date() // 如果有更新时间字段的话
+        } else {
+            // --- 创建新物品 ---
+            let newItem = Item(
+                name: name,
+                imageData: imageData, // 保存图片
+                category: category,
+                quantity: quantity,
+                location: location,
+                note: note
+            )
             modelContext.insert(newItem)
+        }
+        
+        // 3. 提交事务
+        do {
             // 尝试保存上下文以确保数据持久化
             // 虽然 SwiftData 通常会自动保存，但显式保存可以捕获错误
             try modelContext.save()
