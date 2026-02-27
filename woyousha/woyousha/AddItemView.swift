@@ -33,7 +33,9 @@ struct AddItemView: View {
     @State private var isProcessingImage = false // 是否正在进行 AI 抠图
     @State private var errorMessage: String? // 错误提示信息
     @State private var showErrorAlert = false // 控制错误弹窗显示
-    
+    @State private var showActionSheet = false // 控制图片选择方式弹窗
+    @State private var showPhotoPicker = false // 控制相册选择器显示
+
     var body: some View {
         NavigationStack {
             Form {
@@ -83,15 +85,8 @@ struct AddItemView: View {
                                 .disabled(isProcessingImage)
                                 
                             } else {
-                                // 没有图片时的占位符 - 使用 Menu 提供多种选择
-                                Menu {
-                                    Button(action: { isCameraPresented = true }) {
-                                        Label("拍照", systemImage: "camera")
-                                    }
-                                    PhotosPicker(selection: $photosPickerItem, matching: .images) {
-                                        Label("从相册选择", systemImage: "photo")
-                                    }
-                                } label: {
+                                // 没有图片时的占位符 - 使用统一入口，点击后弹出 ActionSheet
+                                Button(action: { showActionSheet = true }) {
                                     VStack(spacing: 8) {
                                         Image(systemName: "camera.fill")
                                             .font(.system(size: 40))
@@ -112,6 +107,29 @@ struct AddItemView: View {
                                             .foregroundStyle(.blue.opacity(0.5))
                                     )
                                 }
+                                .confirmationDialog("选择图片来源", isPresented: $showActionSheet) {
+                                    Button("拍照") {
+                                        isCameraPresented = true
+                                    }
+                                    
+                                    // 这里我们不能直接放 PhotosPicker，因为它是一个 View，不是 Button Action
+                                    // 这是一个 Swift UI 的局限性
+                                    // 解决方法：我们在界面上放置一个隐藏的 PhotosPicker，并通过状态变量来触发它
+                                    // 但是 PhotosPicker 没有 isPresented 绑定
+                                    
+                                    // 所以，为了实现“点击 ActionSheet 里的相册按钮打开相册”，我们需要：
+                                    // 1. 在这里放一个普通 Button("从相册选择")
+                                    // 2. 点击后设置一个 showPhotoPicker = true
+                                    // 3. 在 body 里放一个 .photosPicker(isPresented: $showPhotoPicker)
+                                    // 好消息是：iOS 16+ 的 PhotosPicker 确实支持 isPresented
+                                    
+                                    Button("从相册选择") {
+                                        showPhotoPicker = true
+                                    }
+                                    
+                                    Button("取消", role: .cancel) {}
+                                }
+                                .photosPicker(isPresented: $showPhotoPicker, selection: $photosPickerItem, matching: .images)
                             }
                         }
                         Spacer()

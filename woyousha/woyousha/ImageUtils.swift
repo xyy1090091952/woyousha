@@ -35,6 +35,15 @@ struct ImageUtils {
     /// 使用 iOS 17 Vision 框架的新 API 进行主体分离
     @available(iOS 17.0, *)
     private static func removeBackgroundNew(ciImage: CIImage, originalOrientation: UIImage.Orientation) async -> UIImage? {
+        // 提前检测模拟器环境，避免无效请求
+        #if targetEnvironment(simulator)
+        print("⚠️ 检测到模拟器环境，Vision 抠图不支持，已自动降级为原图")
+        let context = CIContext()
+        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+            return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
+        }
+        return nil
+        #else
         return await Task.detached(priority: .userInitiated) {
             // 创建请求：生成前景实例掩码 (也就是抠图)
             let request = VNGenerateForegroundInstanceMaskRequest()
@@ -67,9 +76,16 @@ struct ImageUtils {
                 return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
             } catch {
                 print("❌ 抠图失败: \(error)")
+                
+                // 将 CIImage 转回 UIImage 并返回
+                let context = CIContext()
+                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+                    return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
+                }
                 return nil
             }
         }.value
+        #endif
     }
     
     /// 给图片添加白色描边 (贴纸效果)
