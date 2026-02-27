@@ -237,8 +237,10 @@ struct AddItemView: View {
     
     // 保存逻辑
     private func saveItem() {
-        // 1. 处理图片数据 (压缩)
-        let imageData = selectedImage?.jpegData(compressionQuality: 0.8)
+        // 1. 处理图片数据
+        // 关键修复：使用 pngData() 以保留透明通道 (Alpha Channel)
+        // jpegData 会自动把透明背景填充为白色，导致抠图效果失效
+        let imageData = selectedImage?.pngData()
         
         // 2. 创建新物品对象
         let newItem = Item(

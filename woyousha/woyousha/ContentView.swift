@@ -34,13 +34,19 @@ struct ContentView: View {
                             VStack(alignment: .leading, spacing: 20) {
                                 // 物品大图
                                 if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
-                                    Image(uiImage: uiImage)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(maxWidth: .infinity, maxHeight: 350)
-                                        .background(Color.gray.opacity(0.1))
-                                        .cornerRadius(12)
-                                        .shadow(radius: 5)
+                                    // 使用 GeometryReader 确保图片居中且保持比例
+                                    HStack {
+                                        Spacer()
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(maxHeight: 350)
+                                            // 恢复普通投影，因为我们已经生成了带白边的图片
+                                            .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 4)
+                                            .padding(10) // 给阴影留出空间
+                                        Spacer()
+                                    }
+                                    .padding(.top, 10)
                                 } else {
                                     // 没有图片时的占位符
                                     Rectangle()
@@ -123,8 +129,8 @@ struct ContentView: View {
                                     .resizable()
                                     .scaledToFit() // 保持比例
                                     .frame(width: 50, height: 50)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(8)
+                                    // 列表页也去掉背景，加一点点阴影
+                                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
                             } else {
                                 Image(systemName: "cube.box.fill")
                                     .font(.title2)
