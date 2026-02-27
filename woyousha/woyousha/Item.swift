@@ -8,6 +8,17 @@
 import Foundation
 import SwiftData
 
+// 定义分类枚举
+enum Category: String, CaseIterable, Codable {
+    case clothes = "衣服"
+    case tools = "工具"
+    case medicine = "药品"
+    case books = "书籍"
+    case food = "食品"
+    case digital = "数码"
+    case other = "其他"
+}
+
 // @Model 是 SwiftData 的核心标记，告诉系统这个类需要被存储到数据库中
 // 类似于 Web 开发中的 ORM 模型定义 (比如 TypeORM 的 @Entity)
 @Model
@@ -21,8 +32,16 @@ final class Item {
     var name: String
     
     // 物品分类 (例如：衣服、工具、药品)
-    // 后续我们可以把它升级为枚举(Enum)类型，现在先用字符串方便理解
-    var category: String
+    // 存储时使用 rawValue (String)，但在代码逻辑中使用枚举类型
+    // 注意：SwiftData 默认支持 Codable 枚举，但为了简单起见，我们也可以存 String
+    // 为了更严格的类型安全，我们这里存 String，通过计算属性转换为枚举
+    var categoryRawValue: String
+    
+    // 计算属性：方便代码中直接使用枚举
+    var category: Category {
+        get { Category(rawValue: categoryRawValue) ?? .other }
+        set { categoryRawValue = newValue.rawValue }
+    }
     
     // 数量 (例如：1)
     var quantity: Int
@@ -44,7 +63,7 @@ final class Item {
     init(
         name: String = "新物品",
         imageData: Data? = nil,
-        category: String = "未分类",
+        category: Category = .other, // 默认分类改为枚举
         quantity: Int = 1,
         location: String = "未指定位置",
         createdDate: Date = Date(),
@@ -53,7 +72,7 @@ final class Item {
     ) {
         self.name = name
         self.imageData = imageData
-        self.category = category
+        self.categoryRawValue = category.rawValue // 存储 rawValue
         self.quantity = quantity
         self.location = location
         self.createdDate = createdDate

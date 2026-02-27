@@ -6,5 +6,9 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+    <key>NSCameraUsageDescription</key>
+    <string>我们需要使用相机来拍摄物品照片，以便进行AI识别和记录。</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>我们需要访问您的相册来选择物品照片。</string>
 </dict>
 </plist>

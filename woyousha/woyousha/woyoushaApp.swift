@@ -24,22 +24,29 @@ struct woyoushaApp: App {
             // 尝试创建数据库容器
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            // 如果因为数据库结构不匹配导致失败，我们不应该让 App 直接崩溃 (fatalError)
-            // 在开发阶段，我们可以选择直接删除旧的数据库文件
             print("❌ 数据库加载失败: \(error)")
-            print("⚠️ 尝试删除旧数据并重建数据库...")
             
-            // 这是一个比较激进的做法，但在开发初期非常有用
-            // 它会自动处理因为模型变更导致的迁移错误
+            // 仅在 DEBUG 模式下尝试删除旧数据
+            #if DEBUG
+            print("⚠️ [DEBUG] 尝试删除旧数据并重建数据库...")
             do {
-                // 删除旧的存储文件
-                try FileManager.default.removeItem(at: URL.applicationSupportDirectory.appending(path: "default.store"))
+                // 获取默认存储路径
+                let url = URL.applicationSupportDirectory.appending(path: "default.store")
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.removeItem(at: url)
+                    print("✅ 旧数据库已删除")
+                }
+                
                 // 再次尝试创建
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {
-                // 如果还不行，那就真的没办法了，只能报错
-                fatalError("Could not create ModelContainer: \(error)")
+                fatalError("Could not create ModelContainer in DEBUG mode: \(error)")
             }
+            #else
+            // 生产环境应该有更完善的迁移策略，或者提示用户
+            // 这里暂时保留 fatalError，但实际生产中应该记录日志并给用户友好提示
+            fatalError("Critical Error: Database failed to load. \(error)")
+            #endif
         }
     }()
 
