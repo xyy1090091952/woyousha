@@ -52,6 +52,9 @@ final class Item {
     // 录入时间，自动设置为当前时间
     var createdDate: Date
     
+    // 更新时间，记录最后一次修改的时间
+    var updatedDate: Date
+    
     // 过期时间/耐久度 (可选，因为不是所有东西都会过期)
     var expirationDate: Date?
     
@@ -67,6 +70,7 @@ final class Item {
         quantity: Int = 1,
         location: String = "未指定位置",
         createdDate: Date = Date(),
+        updatedDate: Date = Date(), // 默认更新时间也是当前时间
         expirationDate: Date? = nil,
         note: String = ""
     ) {
@@ -76,6 +80,7 @@ final class Item {
         self.quantity = quantity
         self.location = location
         self.createdDate = createdDate
+        self.updatedDate = updatedDate
         self.expirationDate = expirationDate
         self.note = note
     }

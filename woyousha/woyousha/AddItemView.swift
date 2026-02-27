@@ -289,7 +289,7 @@ struct AddItemView: View {
             item.quantity = quantity
             item.location = location
             item.note = note
-            // item.updatedDate = Date() // 如果有更新时间字段的话
+            item.updatedDate = Date() // 更新时间为当前时间
         } else {
             // --- 创建新物品 ---
             let newItem = Item(
