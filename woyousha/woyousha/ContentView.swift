@@ -146,7 +146,7 @@ struct ContentView: View {
     
     private var containerListView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 // "全部" 容器
                 VStack(spacing: 4) {
                     Image(systemName: "square.grid.2x2")
@@ -212,7 +212,32 @@ struct ContentView: View {
                     ContainerTabItem(
                         container: container,
                         isSelected: selectedFilter == .specific(container)
-                    )
+                    ) { items in
+                        // 处理 Drop 逻辑
+                        var idsToProcess = Set(items)
+                        
+                        // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
+                        if !selectedItems.isEmpty {
+                            let selectedIds = Set(selectedItems.map { $0.id.uuidString })
+                            if !idsToProcess.isDisjoint(with: selectedIds) {
+                                idsToProcess.formUnion(selectedIds)
+                            }
+                        }
+                        
+                        for id in idsToProcess {
+                            if let item = allItems.first(where: { $0.id.uuidString == id }) {
+                                // 移动物品到该容器
+                                withAnimation {
+                                    item.container = container
+                                    item.updatedDate = Date()
+                                }
+                            }
+                        }
+                        
+                        // 操作完成后清空选中状态
+                        selectedItems.removeAll()
+                        return true
+                    }
                     .onTapGesture {
                         withAnimation {
                             selectedFilter = .specific(container)
@@ -222,34 +247,6 @@ struct ContentView: View {
                     .onLongPressGesture {
                         selectedFilter = .specific(container)
                         showEditContainerSheet = true
-                    }
-                    // 允许拖拽物品到容器上
-                    .dropDestination(for: String.self) { items, location in
-                         var idsToProcess = Set(items)
-                         
-                         // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
-                         if !selectedItems.isEmpty {
-                             let selectedIds = Set(selectedItems.map { $0.id.uuidString })
-                             if !idsToProcess.isDisjoint(with: selectedIds) {
-                                 idsToProcess.formUnion(selectedIds)
-                             }
-                         }
-                         
-                         for id in idsToProcess {
-                             if let item = allItems.first(where: { $0.id.uuidString == id }) {
-                                 // 移动物品到该容器
-                                 withAnimation {
-                                     item.container = container
-                                     item.updatedDate = Date()
-                                 }
-                             }
-                         }
-                         
-                         // 操作完成后清空选中状态
-                         selectedItems.removeAll()
-                         return true
-                    } isTargeted: { isTargeted in
-                        // 高亮显示
                     }
                 }
                 
@@ -273,6 +270,8 @@ struct ContentView: View {
             .padding(.vertical, 12)
         }
         .background(Color.white.opacity(0.5))
+        // 防止 tooltip 被 ScrollView 裁剪
+        .scrollClipDisabled()
     }
     
     private var itemsGridView: some View {
@@ -295,8 +294,17 @@ struct ContentView: View {
                             .onTapGesture {
                                 toggleSelection(item)
                             }
-                            // 支持拖拽
-                            .draggable(item.id.uuidString)
+                            // 支持拖拽 (自定义，移除系统背景和阴影)
+                            .customDraggable(itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) }) {
+                                // 拖拽预览
+                                if selectedItems.contains(item) && selectedItems.count > 1 {
+                                    // 如果拖动的是已选中的物品，且选中了多个，显示堆叠预览
+                                    DragPreviewView(items: Array(selectedItems))
+                                } else {
+                                    // 否则显示单个预览
+                                    DragPreviewView(items: [item])
+                                }
+                            }
                         } else {
                             NavigationLink {
                                 ItemDetailView(item: item)
@@ -307,8 +315,10 @@ struct ContentView: View {
                                     isSelected: selectedItems.contains(item)
                                 )
                             }
-                            // 支持拖拽
-                            .draggable(item.id.uuidString)
+                            // 支持拖拽 (自定义，移除系统背景和阴影)
+                            .customDraggable(itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) }) {
+                                DragPreviewView(items: [item])
+                            }
                         }
                     }
                 }
@@ -452,6 +462,23 @@ struct ContainerTabItem: View {
     let container: Container
     let isSelected: Bool
     
+    // 增加拖拽目标状态检测 (注意：这个状态需要从外部传入或者通过 .dropDestination 的回调来更新)
+    // 但是 .dropDestination 的 isTargeted 回调是在父视图的闭包里
+    // 我们可以通过 Environment 或者 Binding 传递，或者直接把 .dropDestination 写在 ContainerTabItem 内部？
+    // 之前是写在 ContentView 的 ForEach 里的。
+    // 为了简单起见，我们可以在 ContentView 中使用 .onDrop 或者 .dropDestination 的 isTargeted 闭包来控制一个 State，
+    // 但由于有多个容器，我们需要知道哪个容器被 Target。
+    
+    // 更好的方法：将 ContainerTabItem 改造为包含 Drop 逻辑的 View，
+    // 这样它就可以拥有自己的 isTargeted 状态。
+    
+    // 由于我们已经在 ContentView 中定义了 Drop 逻辑，我们需要把那部分逻辑传进来，或者在这里重新定义。
+    // 鉴于删除和移动逻辑都在 ContentView，传一个闭包进来比较好。
+    
+    var onDrop: ([String]) -> Bool
+    
+    @State private var isTargeted = false
+    
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: container.icon)
@@ -460,11 +487,35 @@ struct ContainerTabItem: View {
                 .foregroundStyle(isSelected ? .white : .primary)
                 .background(isSelected ? Color.blue : Color.gray.opacity(0.1))
                 .clipShape(Circle())
+                // 拖拽高亮效果
+                .scaleEffect(isTargeted ? 1.2 : 1.0)
+                .animation(.spring, value: isTargeted)
             
             Text(container.name)
                 .font(.caption)
                 .fontWeight(isSelected ? .bold : .regular)
                 .foregroundStyle(isSelected ? .black : .gray)
+        }
+        .overlay(alignment: .top) {
+            if isTargeted {
+                Text("移动到 \(container.name)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.8))
+                    .cornerRadius(8)
+                    .offset(y: -40)
+            }
+        }
+        // 在这里处理 Drop，以便更新 isTargeted 状态
+        .dropDestination(for: String.self) { items, location in
+            return onDrop(items)
+        } isTargeted: { targeted in
+            withAnimation {
+                isTargeted = targeted
+            }
         }
     }
 }
