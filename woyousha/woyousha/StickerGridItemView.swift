@@ -22,29 +22,69 @@ struct StickerGridItemView: View {
     var body: some View {
         VStack(spacing: -10) { // 负间距，让文字稍微往上贴一点，更有贴纸感
             // 图片区域
-            if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 120) // 贴纸高度
-                    // 贴纸阴影：模拟微微翘起的效果
-                    .shadow(color: .black.opacity(0.15), radius: 3, x: 2, y: 3)
-                    .zIndex(1) // 确保图片在文字上方 (如果需要文字压图则改小)
-            } else {
-                // 无图时的占位符，做成贴纸样式
-                Image(systemName: "cube.box.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 80)
-                    .padding(20)
-                    .foregroundStyle(.gray.opacity(0.5))
-                    .background(
-                        Circle()
-                            .fill(Color.white)
-                            .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
-                    )
-                    .zIndex(1)
+            ZStack(alignment: .topTrailing) {
+                if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 120) // 贴纸高度
+                        // 贴纸阴影：模拟微微翘起的效果
+                        .shadow(color: .black.opacity(0.15), radius: 3, x: 2, y: 3)
+                } else {
+                    // 无图时的占位符，做成贴纸样式
+                    Image(systemName: "cube.box.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 80)
+                        .padding(20)
+                        .foregroundStyle(.gray.opacity(0.5))
+                        .background(
+                            Circle()
+                                .fill(Color.white)
+                                .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
+                        )
+                }
+                
+                // 数量显示：数量大于等于 2 时显示，格式为「xN」
+                // 样式与名称一致：深灰字 + 白色粗描边 + 阴影
+                if item.quantity >= 2 {
+                    ZStack {
+                        let text = "x\(item.quantity)"
+                        // 1. 描边层 (White Stroke)
+                        Group {
+                            // 外圈
+                            Text(text).offset(x: 2.5, y: 0)
+                            Text(text).offset(x: -2.5, y: 0)
+                            Text(text).offset(x: 0, y: 2.5)
+                            Text(text).offset(x: 0, y: -2.5)
+                            
+                            Text(text).offset(x: 1.8, y: 1.8)
+                            Text(text).offset(x: -1.8, y: -1.8)
+                            Text(text).offset(x: 1.8, y: -1.8)
+                            Text(text).offset(x: -1.8, y: 1.8)
+                            
+                            // 内圈
+                            Text(text).offset(x: 1.2, y: 0)
+                            Text(text).offset(x: -1.2, y: 0)
+                            Text(text).offset(x: 0, y: 1.2)
+                            Text(text).offset(x: 0, y: -1.2)
+                            
+                            Text(text) // 中间填充
+                        }
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.1), radius: 2, x: 1, y: 1)
+                        
+                        // 2. 顶层：文字本体 (深灰色)
+                        Text(text)
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color(white: 0.3))
+                    }
+                    .padding(6)
+                    .offset(x: 5, y: -5)
+                }
             }
+            .zIndex(1) // 确保图片在文字上方 (如果需要文字压图则改小)
             
             // 文字区域 (贴纸风格：深灰字 + 白色粗描边 + 阴影)
             ZStack {

@@ -55,11 +55,15 @@ struct ContentView: View {
     // UserDefaults Key
     private let hasInitializedKey = "hasInitializedDefaultContainers"
     
-    // 网格布局
-    let columns = [
-        GridItem(.flexible(), spacing: 16),
-        GridItem(.flexible(), spacing: 16)
-    ]
+    // 网格布局状态
+    @State private var gridColumnCount: Int = 2
+    @State private var baseColumnCount: CGFloat = 2.0
+    // 是否正在缩放 (用于防止误触)
+    @State private var isScaling = false
+    
+    var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 16), count: gridColumnCount)
+    }
     
     var body: some View {
         NavigationStack {
@@ -376,14 +380,31 @@ struct ContentView: View {
                                 }
                             }
                         } else {
-                            NavigationLink {
-                                ItemDetailView(item: item)
+                            // 浏览模式
+                            // 使用 Button 替代 NavigationLink 的直接包裹，以便更好地控制点击事件
+                            Button {
+                                if !isScaling {
+                                    // 只有在非缩放状态下才允许跳转
+                                    // 使用编程式导航或者通过状态控制
+                                    // 这里我们用一个简单的 hack：如果正在缩放，点击无效
+                                    // 但由于 NavigationLink 默认是点击即跳转，我们需要用 .disabled 控制
+                                }
                             } label: {
                                 ItemGridCell(
                                     item: item,
                                     isEditing: isEditing,
                                     isSelected: selectedItems.contains(item)
                                 )
+                            }
+                            // 这里的 NavigationLink 需要覆盖在 Button 上，或者直接用 NavigationLink
+                            // 为了解决误触，我们在 NavigationLink 上加 .disabled(isScaling)
+                            .overlay {
+                                NavigationLink {
+                                    ItemDetailView(item: item)
+                                } label: {
+                                    Color.clear // 透明覆盖层作为点击区域
+                                }
+                                .disabled(isScaling) // 关键：缩放时禁用跳转
                             }
                             .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
                             // 支持拖拽 (自定义，移除系统背景和阴影)
@@ -427,6 +448,32 @@ struct ContentView: View {
                 }
                 .padding(20)
                 .padding(.bottom, isEditing ? 80 : 0) // 给垃圾桶留位置
+                // 双指缩放手势
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            // 开始缩放
+                            isScaling = true
+                            
+                            // value > 1 (放大) -> 列数减少 (物品变大)
+                            // value < 1 (缩小) -> 列数增加 (物品变小)
+                            let newCount = baseColumnCount / value
+                            let clampedCount = min(max(Int(round(newCount)), 2), 5)
+                            
+                            if gridColumnCount != clampedCount {
+                                withAnimation(.spring()) {
+                                    gridColumnCount = clampedCount
+                                }
+                            }
+                        }
+                        .onEnded { _ in
+                            baseColumnCount = CGFloat(gridColumnCount)
+                            // 延迟恢复点击，防止松手瞬间误触
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                isScaling = false
+                            }
+                        }
+                )
             }
         }
         // 拖拽时禁用滚动，防止列表滑动到最底部
