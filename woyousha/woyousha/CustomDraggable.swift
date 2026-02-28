@@ -25,23 +25,20 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
     }
     
     func makeUIView(context: Context) -> UIView {
-        // Create the hosting controller
-        let host = UIHostingController(rootView: content)
-        host.view.backgroundColor = .clear
+        // Create a container view to avoid modifying UIHostingController.view directly
+        let containerView = ContentWrapperView(content: content)
         
-        // Add drag interaction directly to the hosting view
+        // Add drag interaction to the container view
         let interaction = UIDragInteraction(delegate: context.coordinator)
-        host.view.addInteraction(interaction)
+        containerView.addInteraction(interaction)
         
-        // Store the controller in the coordinator to prevent deallocation
-        context.coordinator.host = host
-        
-        return host.view
+        return containerView
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
-        // Update the content of the hosting controller
-        context.coordinator.host?.rootView = content
+        if let wrapper = uiView as? ContentWrapperView<Content> {
+            wrapper.updateContent(content)
+        }
         context.coordinator.parent = self
     }
     
@@ -49,9 +46,58 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
         Coordinator(parent: self)
     }
     
+    // Custom wrapper view to handle layout correctly
+    class ContentWrapperView<C: View>: UIView {
+        var host: UIHostingController<C>
+        
+        init(content: C) {
+            self.host = UIHostingController(rootView: content)
+            super.init(frame: .zero)
+            
+            host.view.backgroundColor = .clear
+            host.view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(host.view)
+            
+            // Set up constraints to fill the wrapper
+            NSLayoutConstraint.activate([
+                host.view.topAnchor.constraint(equalTo: topAnchor),
+                host.view.bottomAnchor.constraint(equalTo: bottomAnchor),
+                host.view.leadingAnchor.constraint(equalTo: leadingAnchor),
+                host.view.trailingAnchor.constraint(equalTo: trailingAnchor)
+            ])
+            
+            // Ensure the wrapper hugs the content tightly
+            setContentHuggingPriority(.required, for: .horizontal)
+            setContentHuggingPriority(.required, for: .vertical)
+            setContentCompressionResistancePriority(.required, for: .horizontal)
+            setContentCompressionResistancePriority(.required, for: .vertical)
+        }
+        
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+        
+        func updateContent(_ content: C) {
+            host.rootView = content
+            host.view.invalidateIntrinsicContentSize()
+            invalidateIntrinsicContentSize()
+        }
+        
+        // Propagate intrinsic content size from the hosted view
+        override var intrinsicContentSize: CGSize {
+            return host.view.intrinsicContentSize
+        }
+        
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // Force layout update if needed
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+        }
+    }
+    
     class Coordinator: NSObject, UIDragInteractionDelegate {
         var parent: CustomDraggable
-        var host: UIHostingController<Content>? // Retain the hosting controller
         
         init(parent: CustomDraggable) {
             self.parent = parent
