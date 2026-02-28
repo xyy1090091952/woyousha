@@ -16,6 +16,7 @@ struct ContainerEditView: View {
     
     @State private var name: String = ""
     @State private var icon: String = "cube.box"
+    @State private var showDeleteConfirmation = false
     
     // 预设的一些可爱家具图标
     let availableIcons = [
@@ -69,6 +70,25 @@ struct ContainerEditView: View {
                     }
                     .listRowBackground(Color.clear)
                 }
+                
+                // 只有在编辑已有容器时才显示删除按钮
+                if let _ = containerToEdit {
+                    Section {
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("删除容器")
+                                Spacer()
+                            }
+                        }
+                    } footer: {
+                        Text("删除容器后，其中的物品将自动移至“未分类”")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             .navigationTitle(containerToEdit == nil ? "新建容器" : "编辑容器")
             .navigationBarTitleDisplayMode(.inline)
@@ -92,7 +112,36 @@ struct ContainerEditView: View {
                     icon = container.icon
                 }
             }
+            .alert("删除容器", isPresented: $showDeleteConfirmation) {
+                Button("取消", role: .cancel) { }
+                Button("确认删除", role: .destructive) {
+                    deleteContainer()
+                }
+            } message: {
+                Text("确定要删除这个容器吗？其中的物品将自动移至“未分类”。")
+            }
         }
+    }
+    
+    private func deleteContainer() {
+        guard let container = containerToEdit else { return }
+        
+        // 1. 获取容器中的所有物品，处理可选值
+        let itemsToMove = container.items ?? []
+        
+        // 2. 将这些物品的 container 设置为 nil (移至未分类)
+        for item in itemsToMove {
+            item.container = nil
+        }
+        
+        // 3. 删除容器
+        modelContext.delete(container)
+        
+        // 4. 保存更改
+        try? modelContext.save()
+        
+        // 5. 关闭页面
+        dismiss()
     }
     
     private func saveContainer() {
