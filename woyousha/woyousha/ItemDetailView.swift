@@ -74,8 +74,14 @@ struct ItemDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("位置", systemImage: "location.fill")
                                 .font(.headline)
-                            Text(item.location.isEmpty ? "未指定位置" : item.location)
-                                .foregroundStyle(.secondary)
+                            
+                            if let container = item.container {
+                                Text(container.name + (item.location.isEmpty ? "" : " - \(item.location)"))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text(item.location.isEmpty ? "未指定位置" : item.location)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         
                         Spacer()
@@ -104,8 +110,10 @@ struct ItemDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            Button("编辑") {
-                showEditSheet = true
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("编辑") {
+                    showEditSheet = true
+                }
             }
         }
         .sheet(isPresented: $showEditSheet) {

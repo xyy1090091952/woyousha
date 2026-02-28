@@ -23,6 +23,9 @@ enum Category: String, CaseIterable, Codable {
 // 类似于 Web 开发中的 ORM 模型定义 (比如 TypeORM 的 @Entity)
 @Model
 final class Item {
+    // 唯一标识符
+    var id: UUID
+    
     // 物品的图片数据
     // 使用 Data 类型存储图片二进制数据，加问号 ? 表示这个字段是可选的（可以没有图片）
     // @Attribute(.externalStorage) 告诉系统如果图片很大，尽量存在外部文件中，不要把数据库撑爆
@@ -61,9 +64,13 @@ final class Item {
     // 备注信息
     var note: String
     
+    // 所属容器
+    var container: Container?
+    
     // 初始化方法，类似于 JavaScript class 的 constructor
     // 我们为很多参数提供了默认值，这样创建物品时就不需要每次都填所有信息
     init(
+        id: UUID = UUID(),
         name: String = "新物品",
         imageData: Data? = nil,
         category: Category = .other, // 默认分类改为枚举
@@ -72,8 +79,10 @@ final class Item {
         createdDate: Date = Date(),
         updatedDate: Date = Date(), // 默认更新时间也是当前时间
         expirationDate: Date? = nil,
-        note: String = ""
+        note: String = "",
+        container: Container? = nil
     ) {
+        self.id = id
         self.name = name
         self.imageData = imageData
         self.categoryRawValue = category.rawValue // 存储 rawValue
@@ -83,5 +92,6 @@ final class Item {
         self.updatedDate = updatedDate
         self.expirationDate = expirationDate
         self.note = note
+        self.container = container
     }
 }

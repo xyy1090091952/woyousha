@@ -18,6 +18,12 @@ struct AddItemView: View {
     // 环境变量：数据库操作上下文 (类似于 DB connection)
     @Environment(\.modelContext) private var modelContext
     
+    // 查询所有容器
+    @Query(sort: \Container.createdDate) private var containers: [Container]
+    
+    // 默认选中的容器 (从外部传入)
+    var defaultContainer: Container?
+    
     // 编辑模式：如果传入了 itemToEdit，说明是编辑现有物品
     var itemToEdit: Item?
     
@@ -28,6 +34,7 @@ struct AddItemView: View {
     @State private var quantity: Int = 1
     @State private var location: String = ""
     @State private var note: String = ""
+    @State private var selectedContainer: Container? // 当前选中的容器
     
     // 图片相关状态
     @State private var selectedImage: UIImage? // 当前显示的图片
@@ -154,7 +161,7 @@ struct AddItemView: View {
                 // 第二部分：基本信息
                 Section("基本信息") {
                     // TextField 类似于 <input type="text">
-                    TextField("物品名称 (必填)", text: $name)
+                    TextField("物品名称", text: $name)
                     
                     // Picker 类似于 <select> 下拉框
                     Picker("分类", selection: $category) {
@@ -167,7 +174,14 @@ struct AddItemView: View {
                 
                 // 第三部分：位置与数量
                 Section("位置与数量") {
-                    TextField("存放位置 (例如: 衣柜第二层)", text: $location)
+                    Picker("存放容器", selection: $selectedContainer) {
+                        Text("未分类").tag(Optional<Container>.none)
+                        ForEach(containers) { container in
+                            Text(container.name).tag(Optional(container))
+                        }
+                    }
+                    
+                    TextField("具体位置 (例如: 第二层)", text: $location)
                     
                     // Stepper 是加减号控件，适合调节数量
                     Stepper("数量: \(quantity)", value: $quantity, in: 1...999)
@@ -195,7 +209,7 @@ struct AddItemView: View {
                     Button("保存") {
                         saveItem()
                     }
-                    .disabled(name.isEmpty || isProcessingImage) // 名字为空或正在处理图片时禁用
+                    .disabled(isProcessingImage) // 名字为空或正在处理图片时禁用
                 }
             }
             .sheet(isPresented: $isCameraPresented) {
@@ -233,9 +247,12 @@ struct AddItemView: View {
                     quantity = item.quantity
                     location = item.location
                     note = item.note
+                    selectedContainer = item.container
                     if let data = item.imageData {
                         selectedImage = UIImage(data: data)
                     }
+                } else if let defaultContainer {
+                    selectedContainer = defaultContainer
                 }
             }
             // 错误提示弹窗
@@ -289,6 +306,7 @@ struct AddItemView: View {
             item.quantity = quantity
             item.location = location
             item.note = note
+            item.container = selectedContainer
             item.updatedDate = Date() // 更新时间为当前时间
         } else {
             // --- 创建新物品 ---
@@ -298,7 +316,10 @@ struct AddItemView: View {
                 category: category,
                 quantity: quantity,
                 location: location,
-                note: note
+                createdDate: Date(),
+                updatedDate: Date(),
+                note: note,
+                container: selectedContainer
             )
             modelContext.insert(newItem)
         }
