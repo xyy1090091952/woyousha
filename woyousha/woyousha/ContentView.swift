@@ -52,6 +52,9 @@ struct ContentView: View {
     // 垃圾桶的高度阈值（屏幕底部多少像素算作垃圾桶区域）
     private let trashBinHeight: CGFloat = 120
     
+    // UserDefaults Key
+    private let hasInitializedKey = "hasInitializedDefaultContainers"
+    
     // 网格布局
     let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -557,7 +560,10 @@ struct ContentView: View {
     }
     
     private func initializeDefaultContainers() {
-        if containers.isEmpty {
+        // 使用 UserDefaults 来检查是否已经初始化过
+        let hasInitialized = UserDefaults.standard.bool(forKey: hasInitializedKey)
+        
+        if !hasInitialized && containers.isEmpty {
             let defaults = [
                 ("小推车", "cart"),
                 ("厨房柜", "cabinet"),
@@ -572,20 +578,11 @@ struct ContentView: View {
                 modelContext.insert(container)
             }
             
-            // 自动选中第一个
             try? modelContext.save()
             
-            // 默认选中第一个容器
-            if let first = containers.first {
-                selectedFilter = .specific(first)
-            }
+            // 标记为已初始化
+            UserDefaults.standard.set(true, forKey: hasInitializedKey)
         }
-        
-        // 如果没有选中任何容器，且有容器存在，默认选中第一个
-        // 只有在 selectedFilter 为 .all 的情况下（初始值），才考虑是否需要自动选中第一个
-        // 但既然用户要求增加“全部”分类，那么默认选中“全部”或者“第一个”都可以
-        // 这里我们修改逻辑：如果是首次启动（containers不为空但filter是all），我们保持all或者设为first？
-        // 实际上，PRD 里说默认有一个家，所以“全部”作为默认视图也是合理的。
     }
     
     private func toggleSelection(_ item: Item) {

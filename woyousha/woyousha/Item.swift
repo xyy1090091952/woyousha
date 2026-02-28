@@ -65,6 +65,7 @@ final class Item {
     var note: String
     
     // 所属容器
+    // 自动通过 Container 中的 inverse 建立双向关系，Item 端通常不需要重复显式定义
     var container: Container?
     
     // 初始化方法，类似于 JavaScript class 的 constructor
