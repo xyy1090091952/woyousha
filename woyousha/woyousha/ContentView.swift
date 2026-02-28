@@ -19,93 +19,80 @@ struct ContentView: View {
     // 控制添加页面的显示状态
     // 类似于 Web 的 <Modal v-model="showAddSheet">
     @State private var showAddSheet = false
+    
+    // 定义网格布局 (两列)
+    let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
 
     var body: some View {
-        // NavigationSplitView 适配 iPad 和 Mac 的分栏布局
-        // 在 iPhone 上会自动变成我们熟悉的导航栏模式
-        NavigationSplitView {
-            List {
-                // 遍历所有物品
-                ForEach(items) { item in
-                    // NavigationLink 定义了点击跳转的目标
-                    NavigationLink {
-                        // 跳转到的详情页面
-                        ItemDetailView(item: item)
-                    } label: {
-                        // 列表项的显示样式
-                        HStack(spacing: 12) {
-                            // 缩略图
-                            if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFit() // 保持比例
-                                    .frame(width: 50, height: 50)
-                                    // 列表页也去掉背景，加一点点阴影
-                                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-                            } else {
-                                Image(systemName: "cube.box.fill")
-                                    .font(.title2)
-                                    .frame(width: 50, height: 50)
-                                    .background(Color.gray.opacity(0.1))
-                                    .foregroundStyle(.gray)
-                                    .cornerRadius(8)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.name)
-                                    .font(.headline)
-                                HStack(spacing: 6) {
-                                    Text(item.category.rawValue)
-                                        .font(.caption2)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.blue.opacity(0.1))
-                                        .foregroundStyle(.blue)
-                                        .cornerRadius(4)
-                                    
-                                    if !item.location.isEmpty {
-                                        Text(item.location)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+        // NavigationStack 替代 NavigationSplitView，因为手帐风格更适合全屏沉浸
+        NavigationStack {
+            ZStack {
+                // 1. 背景层：点阵纸背景
+                DotGridBackground(spacing: 20, dotColor: .gray.opacity(0.3))
+                
+                // 2. 内容层：滚动网格
+                ScrollView {
+                    if items.isEmpty {
+                        // 空状态提示
+                        VStack(spacing: 20) {
+                            Image(systemName: "pencil.and.scribble")
+                                .font(.system(size: 60))
+                                .foregroundStyle(.gray.opacity(0.5))
+                            Text("开始记录你的手帐吧")
+                                .font(.title3)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.gray)
+                            Text("点击右上角 + 添加第一个贴纸")
+                                .font(.subheadline)
+                                .foregroundStyle(.gray.opacity(0.8))
+                        }
+                        .padding(.top, 100)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 24) {
+                            ForEach(items) { item in
+                                NavigationLink {
+                                    ItemDetailView(item: item)
+                                } label: {
+                                    StickerGridItemView(item: item)
+                                }
+                                // 添加长按菜单 (Context Menu) 以便删除或编辑
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        deleteItem(item)
+                                    } label: {
+                                        Label("撕掉贴纸", systemImage: "trash")
                                     }
                                 }
                             }
-                            Spacer()
-                            Text("x\(item.quantity)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 4)
+                        .padding(20) // 网格周边的留白
                     }
                 }
-                .onDelete(perform: deleteItems) // 启用左滑删除功能
             }
-            .navigationTitle("我的物品") // 页面标题
+            .navigationTitle("我的手帐") // 页面标题
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // 顶部工具栏按钮
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton() // 系统自带的编辑按钮
-                }
-                ToolbarItem {
                     Button(action: { showAddSheet = true }) {
-                        Label("添加物品", systemImage: "plus")
+                        Image(systemName: "plus.circle.fill") // 使用更显眼的加号
+                            .font(.title2)
+                            .foregroundStyle(.blue)
                     }
                 }
             }
             .sheet(isPresented: $showAddSheet) {
                 AddItemView()
             }
-        } detail: {
-            Text("请选择一个物品查看详情")
         }
     }
 
-    // 删除物品
-    private func deleteItems(offsets: IndexSet) {
+    // 删除单个物品
+    private func deleteItem(_ item: Item) {
         withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+            modelContext.delete(item)
         }
     }
 }
