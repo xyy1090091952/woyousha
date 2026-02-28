@@ -42,6 +42,8 @@ struct ContentView: View {
     // 控制编辑容器页面的显示
     @State private var showEditContainerSheet = false
     
+    @State private var draggingItems: Set<String> = [] // 正在拖拽的物品 ID 集合
+    
     // 网格布局
     let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -291,11 +293,28 @@ struct ContentView: View {
                                 isEditing: isEditing,
                                 isSelected: selectedItems.contains(item)
                             )
+                            .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
                             .onTapGesture {
                                 toggleSelection(item)
                             }
                             // 支持拖拽 (自定义，移除系统背景和阴影)
-                            .customDraggable(itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) }) {
+                            .customDraggable(
+                                itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) },
+                                onDragStart: {
+                                    if selectedItems.contains(item) {
+                                        // 如果拖拽的是已选中物品之一，则所有选中物品都变幽灵
+                                        draggingItems = Set(selectedItems.map { $0.id.uuidString })
+                                    } else {
+                                        // 否则只变这一个
+                                        draggingItems = [item.id.uuidString]
+                                    }
+                                    print("DEBUG: Drag start for items: \(draggingItems)")
+                                },
+                                onDragEnd: {
+                                    draggingItems.removeAll()
+                                    print("DEBUG: Drag ended")
+                                }
+                            ) {
                                 // 拖拽预览
                                 if selectedItems.contains(item) && selectedItems.count > 1 {
                                     // 如果拖动的是已选中的物品，且选中了多个，显示堆叠预览
@@ -315,8 +334,25 @@ struct ContentView: View {
                                     isSelected: selectedItems.contains(item)
                                 )
                             }
+                            .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
                             // 支持拖拽 (自定义，移除系统背景和阴影)
-                            .customDraggable(itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) }) {
+                            .customDraggable(
+                                itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) },
+                                onDragStart: {
+                                    if selectedItems.contains(item) {
+                                        // 如果拖拽的是已选中物品之一，则所有选中物品都变幽灵
+                                        draggingItems = Set(selectedItems.map { $0.id.uuidString })
+                                    } else {
+                                        // 否则只变这一个
+                                        draggingItems = [item.id.uuidString]
+                                    }
+                                    print("DEBUG: Drag start for items: \(draggingItems)")
+                                },
+                                onDragEnd: {
+                                    draggingItems.removeAll()
+                                    print("DEBUG: Drag ended")
+                                }
+                            ) {
                                 DragPreviewView(items: [item])
                             }
                         }

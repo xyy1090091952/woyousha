@@ -13,15 +13,21 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
     let content: Content
     let preview: Preview
     let itemProvider: () -> NSItemProvider
+    var onDragStart: (() -> Void)?
+    var onDragEnd: (() -> Void)?
     
     init(
         @ViewBuilder content: () -> Content,
         @ViewBuilder preview: () -> Preview,
-        itemProvider: @escaping () -> NSItemProvider
+        itemProvider: @escaping () -> NSItemProvider,
+        onDragStart: (() -> Void)? = nil,
+        onDragEnd: (() -> Void)? = nil
     ) {
         self.content = content()
         self.preview = preview()
         self.itemProvider = itemProvider
+        self.onDragStart = onDragStart
+        self.onDragEnd = onDragEnd
     }
     
     func makeUIView(context: Context) -> UIView {
@@ -135,6 +141,20 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
             
             return UITargetedDragPreview(view: previewHost.view, parameters: parameters, target: target)
         }
+        
+        func dragInteraction(_ interaction: UIDragInteraction, sessionWillBegin session: UIDragSession) {
+            DispatchQueue.main.async {
+                print("DEBUG: Drag session will begin")
+                self.parent.onDragStart?()
+            }
+        }
+        
+        func dragInteraction(_ interaction: UIDragInteraction, session: UIDragSession, didEndWith operation: UIDropOperation) {
+            DispatchQueue.main.async {
+                print("DEBUG: Drag session ended")
+                self.parent.onDragEnd?()
+            }
+        }
     }
 }
 
@@ -142,8 +162,16 @@ extension View {
     /// Enables drag with a custom preview that has no system background or shadow.
     func customDraggable<Preview: View>(
         itemProvider: @escaping () -> NSItemProvider,
+        onDragStart: (() -> Void)? = nil,
+        onDragEnd: (() -> Void)? = nil,
         @ViewBuilder preview: @escaping () -> Preview
     ) -> some View {
-        CustomDraggable(content: { self }, preview: preview, itemProvider: itemProvider)
+        CustomDraggable(
+            content: { self },
+            preview: preview,
+            itemProvider: itemProvider,
+            onDragStart: onDragStart,
+            onDragEnd: onDragEnd
+        )
     }
 }
