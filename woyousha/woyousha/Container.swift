@@ -17,7 +17,7 @@ final class Container {
     
     // Relationship to items
     // inverse relationship is defined in Item
-    @Relationship(deleteRule: .cascade, inverse: \Item.container)
+    @Relationship(deleteRule: .nullify, inverse: \Item.container)
     var items: [Item]? = []
     
     var createdDate: Date

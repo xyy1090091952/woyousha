@@ -12,7 +12,8 @@ struct ContainerEditView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     
-    var containerToEdit: Container?
+    var containerToEdit: Container? = nil
+    var onDelete: (() -> Void)? = nil
     
     @State private var name: String = ""
     @State private var icon: String = "cube.box"
@@ -126,21 +127,18 @@ struct ContainerEditView: View {
     private func deleteContainer() {
         guard let container = containerToEdit else { return }
         
-        // 1. 获取容器中的所有物品，处理可选值
-        let itemsToMove = container.items ?? []
+        // 由于 Container 模型中设置了 @Relationship(deleteRule: .nullify, inverse: \Item.container)
+        // 删除容器时，关联的物品会自动将 container 属性置为 nil (即移至未分类)
+        // 所以这里只需要删除容器即可，不需要手动迁移物品
         
-        // 2. 将这些物品的 container 设置为 nil (移至未分类)
-        for item in itemsToMove {
-            item.container = nil
-        }
-        
-        // 3. 删除容器
+        // 1. 删除容器
         modelContext.delete(container)
         
-        // 4. 保存更改
+        // 2. 保存更改
         try? modelContext.save()
         
-        // 5. 关闭页面
+        // 3. 执行回调并关闭页面
+        onDelete?()
         dismiss()
     }
     

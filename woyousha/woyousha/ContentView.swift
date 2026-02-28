@@ -92,7 +92,10 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showEditContainerSheet) {
                 if case .specific(let container) = selectedFilter {
-                    ContainerEditView(containerToEdit: container)
+                    ContainerEditView(containerToEdit: container) {
+                        // 容器删除后的回调：重置选中状态
+                        selectedFilter = .all
+                    }
                 }
             }
             // 底部垃圾桶区域（仅在拖拽时显示，或者在编辑模式下显示）
@@ -108,10 +111,14 @@ struct ContentView: View {
     // MARK: - Views
     
     private var homeHeaderView: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             // 家的模拟图 (占位)
+            // 使用 Color 作为背景，并让它忽略安全区域
+            // 内容（图标和文字）单独放置，保持在安全区域内
+            
+            // 1. 内容层
             Rectangle()
-                .fill(Color.gray.opacity(0.1))
+                .fill(Color.clear) // 透明，只用于占位和布局
                 .frame(height: 200)
                 .overlay {
                     Image(systemName: "house.fill")
@@ -123,36 +130,49 @@ struct ContentView: View {
                         .offset(y: 40)
                 }
             
-            // 编辑按钮
-            Button(action: {
-                withAnimation {
-                    isEditing.toggle()
-                    selectedItems.removeAll()
+            // 顶部按钮栏
+            HStack {
+                // 添加按钮 (左侧)
+                if !isEditing {
+                    Button(action: { showAddSheet = true }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.8))
+                            .clipShape(Capsule())
+                            .shadow(radius: 2)
+                    }
+                    .transition(.opacity)
                 }
-            }) {
-                Text(isEditing ? "完成" : "编辑")
-                    .font(.subheadline)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.8))
-                    .clipShape(Capsule())
-                    .shadow(radius: 2)
-            }
-            .padding(16)
-            
-            // 添加按钮 (仅在非编辑模式显示)
-            if !isEditing {
-                Button(action: { showAddSheet = true }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title)
-                        .foregroundStyle(.blue)
-                        .background(Color.white)
-                        .clipShape(Circle())
+                
+                Spacer()
+                
+                // 编辑按钮 (右侧)
+                Button(action: {
+                    withAnimation {
+                        isEditing.toggle()
+                        selectedItems.removeAll()
+                    }
+                }) {
+                    Text(isEditing ? "完成" : "编辑")
+                        .font(.subheadline)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.8))
+                        .clipShape(Capsule())
+                        .shadow(radius: 2)
                 }
-                .padding(16)
-                .offset(y: 50) // 放在右下角一点
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 16) // 恢复正常的顶部间距
         }
+        // 2. 背景层：单独设置背景色并延伸到安全区域
+        .background(
+            Color.gray.opacity(0.1)
+                .ignoresSafeArea(edges: .top)
+        )
     }
     
     private var containerListView: some View {
