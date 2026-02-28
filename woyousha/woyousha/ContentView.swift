@@ -42,7 +42,15 @@ struct ContentView: View {
     // 控制编辑容器页面的显示
     @State private var showEditContainerSheet = false
     
-    @State private var draggingItems: Set<String> = [] // 正在拖拽的物品 ID 集合
+    // 正在拖拽的物品 ID 集合
+    @State private var draggingItems: Set<String> = []
+    // 当前拖拽的位置（相对于整个屏幕）
+    @State private var dragLocation: CGPoint = .zero
+    // 垃圾桶区域是否处于高亮状态（准备删除）
+    @State private var isTrashBinActive = false
+    
+    // 垃圾桶的高度阈值（屏幕底部多少像素算作垃圾桶区域）
+    private let trashBinHeight: CGFloat = 120
     
     // 网格布局
     let columns = [
@@ -89,7 +97,8 @@ struct ContentView: View {
             }
             // 底部垃圾桶区域（仅在拖拽时显示，或者在编辑模式下显示）
             .overlay(alignment: .bottom) {
-                if isEditing {
+                // 当处于编辑模式，或者正在拖拽物品时显示垃圾桶
+                if isEditing || !draggingItems.isEmpty {
                     trashBinView
                 }
             }
@@ -278,7 +287,7 @@ struct ContentView: View {
     
     private var itemsGridView: some View {
         ScrollView {
-            let filteredItems = currentItems
+            let filteredItems = currentItems.sorted { $0.createdDate > $1.createdDate }
             
             if filteredItems.isEmpty {
                 emptyStateView
@@ -301,18 +310,35 @@ struct ContentView: View {
                             .customDraggable(
                                 itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) },
                                 onDragStart: {
-                                    if selectedItems.contains(item) {
-                                        // 如果拖拽的是已选中物品之一，则所有选中物品都变幽灵
-                                        draggingItems = Set(selectedItems.map { $0.id.uuidString })
-                                    } else {
-                                        // 否则只变这一个
-                                        draggingItems = [item.id.uuidString]
+                                    // 立即设置拖拽状态，这会触发 scrollDisabled
+                                    DispatchQueue.main.async {
+                                        if selectedItems.contains(item) {
+                                            draggingItems = Set(selectedItems.map { $0.id.uuidString })
+                                        } else {
+                                            draggingItems = [item.id.uuidString]
+                                        }
                                     }
-                                    print("DEBUG: Drag start for items: \(draggingItems)")
                                 },
                                 onDragEnd: {
                                     draggingItems.removeAll()
-                                    print("DEBUG: Drag ended")
+                                    isTrashBinActive = false
+                                },
+                                onDragMove: { location in
+                                    // 检查是否进入垃圾桶区域
+                                    // 这里使用简单的 Y 坐标判断，假设垃圾桶在底部 120pt 区域
+                                    // 注意：location 是相对于 window 的坐标
+                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                                       let window = windowScene.windows.first {
+                                        let screenHeight = window.bounds.height
+                                        let isInTrashArea = location.y > (screenHeight - trashBinHeight)
+                                        
+                                        // 只有状态改变时才更新，减少 SwiftUI 刷新
+                                        if isTrashBinActive != isInTrashArea {
+                                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                                                isTrashBinActive = isInTrashArea
+                                            }
+                                        }
+                                    }
                                 }
                             ) {
                                 // 拖拽预览
@@ -339,18 +365,32 @@ struct ContentView: View {
                             .customDraggable(
                                 itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) },
                                 onDragStart: {
-                                    if selectedItems.contains(item) {
-                                        // 如果拖拽的是已选中物品之一，则所有选中物品都变幽灵
-                                        draggingItems = Set(selectedItems.map { $0.id.uuidString })
-                                    } else {
-                                        // 否则只变这一个
-                                        draggingItems = [item.id.uuidString]
+                                    // 立即设置拖拽状态，这会触发 scrollDisabled
+                                    DispatchQueue.main.async {
+                                        if selectedItems.contains(item) {
+                                            draggingItems = Set(selectedItems.map { $0.id.uuidString })
+                                        } else {
+                                            draggingItems = [item.id.uuidString]
+                                        }
                                     }
-                                    print("DEBUG: Drag start for items: \(draggingItems)")
                                 },
                                 onDragEnd: {
                                     draggingItems.removeAll()
-                                    print("DEBUG: Drag ended")
+                                    isTrashBinActive = false
+                                },
+                                onDragMove: { location in
+                                    // 检查是否进入垃圾桶区域
+                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                                       let window = windowScene.windows.first {
+                                        let screenHeight = window.bounds.height
+                                        let isInTrashArea = location.y > (screenHeight - trashBinHeight)
+                                        
+                                        if isTrashBinActive != isInTrashArea {
+                                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                                                isTrashBinActive = isInTrashArea
+                                            }
+                                        }
+                                    }
                                 }
                             ) {
                                 DragPreviewView(items: [item])
@@ -362,6 +402,18 @@ struct ContentView: View {
                 .padding(.bottom, isEditing ? 80 : 0) // 给垃圾桶留位置
             }
         }
+        // 拖拽时禁用滚动，防止列表滑动到最底部
+        .scrollDisabled(!draggingItems.isEmpty)
+        // 关键：通过监听拖拽手势来主动阻止 ScrollView 的滚动事件
+        // 这是一个更底层的 Hack，防止在 draggingItems 状态更新前 ScrollView 就已经开始滚动
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    // 这里不需要做任何事，主要是为了捕获触摸事件，
+                    // 让 ScrollView 认为有手势在处理，从而可能阻止它的滚动。
+                    // 配合 scrollDisabled 使用效果更好。
+                }
+        )
     }
     
     private var emptyStateView: some View {
@@ -387,45 +439,83 @@ struct ContentView: View {
     }
     
     private var trashBinView: some View {
-        VStack {
-            Spacer()
-            ZStack {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .ignoresSafeArea()
-                    .frame(height: 100)
-                
-                VStack {
-                    Image(systemName: "trash.fill")
-                        .font(.title)
-                        .foregroundStyle(.red)
-                    Text("拖拽到这里删除")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+        GeometryReader { geo in
+            VStack {
+                Spacer()
+                ZStack {
+                    // 背景
+                    Rectangle()
+                        .fill(isTrashBinActive ? .ultraThinMaterial : .regularMaterial)
+                        .opacity(isTrashBinActive ? 1.0 : 0.8) // 默认半透明
+                        .ignoresSafeArea()
+                        .frame(height: isTrashBinActive ? 180 : 80) // 恢复默认高度
+                        .background(
+                            isTrashBinActive ? Color.red.opacity(0.1) : Color.clear
+                        )
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTrashBinActive)
+                    
+                    VStack(spacing: 8) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: isTrashBinActive ? 40 : 24))
+                            .foregroundStyle(isTrashBinActive ? .red : .gray)
+                            .scaleEffect(isTrashBinActive ? 1.2 : 1.0)
+                        
+                        if isTrashBinActive {
+                            Text("松手删除")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .fontWeight(.bold)
+                                .transition(.opacity.combined(with: .scale))
+                        } else {
+                            Text("拖拽到这里删除")
+                                .font(.caption2)
+                                .foregroundStyle(.gray)
+                                .transition(.opacity)
+                        }
+                    }
+                    .offset(y: isTrashBinActive ? -10 : 0) // 恢复默认位置
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isTrashBinActive)
                 }
-            }
-            .dropDestination(for: String.self) { items, location in
-                // 删除逻辑
-                var idsToProcess = Set(items)
-                
-                // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
-                if !selectedItems.isEmpty {
-                    let selectedIds = Set(selectedItems.map { $0.id.uuidString })
-                    if !idsToProcess.isDisjoint(with: selectedIds) {
-                        idsToProcess.formUnion(selectedIds)
+                .frame(maxWidth: .infinity)
+                // 确保 dropDestination 覆盖整个区域
+                .dropDestination(for: String.self) { items, location in
+                    // 删除逻辑
+                    handleDelete(items: items)
+                    return true
+                } isTargeted: { targeted in
+                    // 系统自带的 targeted 状态，也可以用来辅助
+                    withAnimation {
+                        isTrashBinActive = targeted
                     }
                 }
-                
-                for id in idsToProcess {
-                    if let item = allItems.first(where: { $0.id.uuidString == id }) {
-                        deleteItem(item)
-                    }
-                }
-                
-                // 操作完成后清空选中状态
-                selectedItems.removeAll()
-                return true
             }
+        }
+        // 确保不阻挡底部的点击（如果没有背景色的话），但在拖拽时需要阻挡
+        .allowsHitTesting(isEditing || !draggingItems.isEmpty)
+    }
+    
+    // 抽离删除逻辑
+    private func handleDelete(items: [String]) {
+        var idsToProcess = Set(items)
+        
+        // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
+        if !selectedItems.isEmpty {
+            let selectedIds = Set(selectedItems.map { $0.id.uuidString })
+            if !idsToProcess.isDisjoint(with: selectedIds) {
+                idsToProcess.formUnion(selectedIds)
+            }
+        }
+        
+        // 执行删除
+        withAnimation {
+            for id in idsToProcess {
+                if let item = allItems.first(where: { $0.id.uuidString == id }) {
+                    modelContext.delete(item)
+                }
+            }
+            selectedItems.removeAll()
+            draggingItems.removeAll()
+            isTrashBinActive = false
         }
     }
     
@@ -564,7 +654,8 @@ struct ItemGridCell: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             StickerGridItemView(item: item)
-                .opacity(isEditing ? 0.8 : 1.0)
+                // 移除 isEditing 的透明度变化，保持原样
+                .opacity(1.0)
             
             if isEditing {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")

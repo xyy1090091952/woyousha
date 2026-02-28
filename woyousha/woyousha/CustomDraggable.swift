@@ -15,19 +15,22 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
     let itemProvider: () -> NSItemProvider
     var onDragStart: (() -> Void)?
     var onDragEnd: (() -> Void)?
+    var onDragMove: ((CGPoint) -> Void)?
     
     init(
         @ViewBuilder content: () -> Content,
         @ViewBuilder preview: () -> Preview,
         itemProvider: @escaping () -> NSItemProvider,
         onDragStart: (() -> Void)? = nil,
-        onDragEnd: (() -> Void)? = nil
+        onDragEnd: (() -> Void)? = nil,
+        onDragMove: ((CGPoint) -> Void)? = nil
     ) {
         self.content = content()
         self.preview = preview()
         self.itemProvider = itemProvider
         self.onDragStart = onDragStart
         self.onDragEnd = onDragEnd
+        self.onDragMove = onDragMove
     }
     
     func makeUIView(context: Context) -> UIView {
@@ -149,6 +152,14 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
             }
         }
         
+        func dragInteraction(_ interaction: UIDragInteraction, sessionDidMove session: UIDragSession) {
+            guard let window = interaction.view?.window else { return }
+            let location = session.location(in: window)
+            DispatchQueue.main.async {
+                self.parent.onDragMove?(location)
+            }
+        }
+        
         func dragInteraction(_ interaction: UIDragInteraction, session: UIDragSession, didEndWith operation: UIDropOperation) {
             DispatchQueue.main.async {
                 print("DEBUG: Drag session ended")
@@ -164,6 +175,7 @@ extension View {
         itemProvider: @escaping () -> NSItemProvider,
         onDragStart: (() -> Void)? = nil,
         onDragEnd: (() -> Void)? = nil,
+        onDragMove: ((CGPoint) -> Void)? = nil,
         @ViewBuilder preview: @escaping () -> Preview
     ) -> some View {
         CustomDraggable(
@@ -171,7 +183,8 @@ extension View {
             preview: preview,
             itemProvider: itemProvider,
             onDragStart: onDragStart,
-            onDragEnd: onDragEnd
+            onDragEnd: onDragEnd,
+            onDragMove: onDragMove
         )
     }
 }
