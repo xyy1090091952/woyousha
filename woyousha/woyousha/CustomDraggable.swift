@@ -147,7 +147,6 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
         
         func dragInteraction(_ interaction: UIDragInteraction, sessionWillBegin session: UIDragSession) {
             DispatchQueue.main.async {
-                print("DEBUG: Drag session will begin")
                 self.parent.onDragStart?()
             }
         }
@@ -162,7 +161,6 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
         
         func dragInteraction(_ interaction: UIDragInteraction, session: UIDragSession, didEndWith operation: UIDropOperation) {
             DispatchQueue.main.async {
-                print("DEBUG: Drag session ended")
                 self.parent.onDragEnd?()
             }
         }

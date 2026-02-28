@@ -209,7 +209,7 @@ struct AddItemView: View {
                     Button("保存") {
                         saveItem()
                     }
-                    .disabled(isProcessingImage) // 名字为空或正在处理图片时禁用
+                    .disabled(isProcessingImage)
                 }
             }
             .sheet(isPresented: $isCameraPresented) {

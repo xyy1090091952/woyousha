@@ -321,14 +321,16 @@ struct ContentView: View {
                                 },
                                 onDragEnd: {
                                     draggingItems.removeAll()
-                                    isTrashBinActive = false
+                                    isTrashBinActive = false // 确保松手后重置状态
                                 },
                                 onDragMove: { location in
                                     // 检查是否进入垃圾桶区域
                                     // 这里使用简单的 Y 坐标判断，假设垃圾桶在底部 120pt 区域
                                     // 注意：location 是相对于 window 的坐标
-                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                                       let window = windowScene.windows.first {
+                                    if let window = UIApplication.shared.connectedScenes
+                                        .compactMap({ $0 as? UIWindowScene })
+                                        .flatMap({ $0.windows })
+                                        .first(where: { $0.isKeyWindow }) {
                                         let screenHeight = window.bounds.height
                                         let isInTrashArea = location.y > (screenHeight - trashBinHeight)
                                         
@@ -380,8 +382,10 @@ struct ContentView: View {
                                 },
                                 onDragMove: { location in
                                     // 检查是否进入垃圾桶区域
-                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                                       let window = windowScene.windows.first {
+                                    if let window = UIApplication.shared.connectedScenes
+                                        .compactMap({ $0 as? UIWindowScene })
+                                        .flatMap({ $0.windows })
+                                        .first(where: { $0.isKeyWindow }) {
                                         let screenHeight = window.bounds.height
                                         let isInTrashArea = location.y > (screenHeight - trashBinHeight)
                                         
@@ -562,9 +566,6 @@ struct ContentView: View {
         // 但既然用户要求增加“全部”分类，那么默认选中“全部”或者“第一个”都可以
         // 这里我们修改逻辑：如果是首次启动（containers不为空但filter是all），我们保持all或者设为first？
         // 实际上，PRD 里说默认有一个家，所以“全部”作为默认视图也是合理的。
-        // 但之前的逻辑是默认选中第一个容器。为了平滑过渡，我们可以保持默认选中第一个容器，或者改为全部。
-        // 鉴于用户新增了“全部”，也许默认展示“全部”更好？
-        // 暂时保持默认选中 .all (State 的默认值)，除非初始化了新容器。
     }
     
     private func toggleSelection(_ item: Item) {
@@ -625,14 +626,19 @@ struct ContainerTabItem: View {
         .overlay(alignment: .top) {
             if isTargeted {
                 Text("移动到 \(container.name)")
-                    .font(.caption2)
-                    .fontWeight(.bold)
+                    .font(.system(size: 12, weight: .bold)) // 使用固定字号，更清晰
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.8))
-                    .cornerRadius(8)
-                    .offset(y: -40)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.black.opacity(0.8))
+                            .shadow(radius: 2)
+                    )
+                    .lineLimit(1) // 强制单行
+                    .fixedSize() // 强制适应内容大小
+                    .offset(y: -50) // 向上偏移更多，避免遮挡图标
+                    .zIndex(999) // 确保在最上层
             }
         }
         // 在这里处理 Drop，以便更新 isTargeted 状态
