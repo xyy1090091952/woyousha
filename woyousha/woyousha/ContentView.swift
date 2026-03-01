@@ -312,6 +312,18 @@ struct ContentView: View {
         .scrollClipDisabled()
     }
     
+    // 计算动态高度
+    private var dynamicItemHeight: CGFloat {
+        // 根据列数计算高度
+        // 2列 -> 180
+        // 3列 -> 150
+        // 4列 -> 120
+        // 5列 -> 90
+        // 公式：180 - (列数 - 2) * 30
+        let height = 180.0 - CGFloat(gridColumnCount - 2) * 30.0
+        return max(height, 80.0) // 最小高度 80
+    }
+    
     private var itemsGridView: some View {
         ScrollView {
             let filteredItems = currentItems.sorted { $0.createdDate > $1.createdDate }
@@ -327,7 +339,8 @@ struct ContentView: View {
                             ItemGridCell(
                                 item: item,
                                 isEditing: isEditing,
-                                isSelected: selectedItems.contains(item)
+                                isSelected: selectedItems.contains(item),
+                                itemHeight: dynamicItemHeight
                             )
                             .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
                             .onTapGesture {
@@ -381,31 +394,19 @@ struct ContentView: View {
                             }
                         } else {
                             // 浏览模式
-                            // 使用 Button 替代 NavigationLink 的直接包裹，以便更好地控制点击事件
-                            Button {
-                                if !isScaling {
-                                    // 只有在非缩放状态下才允许跳转
-                                    // 使用编程式导航或者通过状态控制
-                                    // 这里我们用一个简单的 hack：如果正在缩放，点击无效
-                                    // 但由于 NavigationLink 默认是点击即跳转，我们需要用 .disabled 控制
-                                }
+                            // 直接使用 NavigationLink，并在缩放时禁用
+                            NavigationLink {
+                                ItemDetailView(item: item)
                             } label: {
                                 ItemGridCell(
                                     item: item,
                                     isEditing: isEditing,
-                                    isSelected: selectedItems.contains(item)
+                                    isSelected: selectedItems.contains(item),
+                                    itemHeight: dynamicItemHeight
                                 )
                             }
-                            // 这里的 NavigationLink 需要覆盖在 Button 上，或者直接用 NavigationLink
-                            // 为了解决误触，我们在 NavigationLink 上加 .disabled(isScaling)
-                            .overlay {
-                                NavigationLink {
-                                    ItemDetailView(item: item)
-                                } label: {
-                                    Color.clear // 透明覆盖层作为点击区域
-                                }
-                                .disabled(isScaling) // 关键：缩放时禁用跳转
-                            }
+                            // 关键：缩放时禁用跳转，防止误触
+                            .disabled(isScaling)
                             .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
                             // 支持拖拽 (自定义，移除系统背景和阴影)
                             .customDraggable(
@@ -445,6 +446,8 @@ struct ContentView: View {
                             }
                         }
                     }
+                    // 强制在列数变化时重建整个 Cell，解决图片大小不更新的问题
+                    .id(gridColumnCount)
                 }
                 .padding(20)
                 .padding(.bottom, isEditing ? 80 : 0) // 给垃圾桶留位置
@@ -466,8 +469,13 @@ struct ContentView: View {
                                 }
                             }
                         }
-                        .onEnded { _ in
-                            baseColumnCount = CGFloat(gridColumnCount)
+                        .onEnded { value in
+                            // 关键修正：保留小数位精度
+                            // 不要直接用 gridColumnCount 更新 baseColumnCount，
+                            // 而是根据最后的手势值计算新的 base，但限制在合理范围内 (2~5)
+                            let newCount = baseColumnCount / value
+                            baseColumnCount = min(max(newCount, 2.0), 5.0)
+                            
                             // 延迟恢复点击，防止松手瞬间误触
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 isScaling = false
@@ -720,10 +728,12 @@ struct ItemGridCell: View {
     let item: Item
     let isEditing: Bool
     let isSelected: Bool
+    // 接收动态高度
+    var itemHeight: CGFloat = 120
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            StickerGridItemView(item: item)
+            StickerGridItemView(item: item, height: itemHeight)
                 // 移除 isEditing 的透明度变化，保持原样
                 .opacity(1.0)
             

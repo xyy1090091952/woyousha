@@ -9,6 +9,14 @@ import SwiftUI
 
 struct StickerGridItemView: View {
     let item: Item
+    // 增加一个可选的 height 参数，如果未提供则使用默认值
+    // 将 height 改为 let，确保视图更新时正确处理
+    let height: CGFloat
+    
+    init(item: Item, height: CGFloat = 120) {
+        self.item = item
+        self.height = height
+    }
     
     // 随机旋转角度 (-3 ~ 3 度)，模拟手贴的自然感
     // 注意：每次视图刷新可能会重新计算，最好是基于 item 的某个属性固定，或者在 onAppear 中设置
@@ -27,7 +35,9 @@ struct StickerGridItemView: View {
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFit()
-                        .frame(height: 120) // 贴纸高度
+                        .frame(height: height) // 使用动态高度
+                        // 强制 Image 在 height 变化时刷新
+                        .id("image-\(item.id)-\(height)")
                         // 贴纸阴影：模拟微微翘起的效果
                         .shadow(color: .black.opacity(0.15), radius: 3, x: 2, y: 3)
                 } else {
@@ -35,101 +45,60 @@ struct StickerGridItemView: View {
                     Image(systemName: "cube.box.fill")
                         .resizable()
                         .scaledToFit()
-                        .frame(height: 80)
-                        .padding(20)
+                        .frame(height: height * 0.66) // 占位符高度也相应调整
+                        .padding(height * 0.16)
                         .foregroundStyle(.gray.opacity(0.5))
                         .background(
                             Circle()
                                 .fill(Color.white)
                                 .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
                         )
+                        // 强制占位符在 height 变化时刷新
+                        .id("placeholder-\(item.id)-\(height)")
                 }
                 
                 // 数量显示：数量大于等于 2 时显示，格式为「xN」
                 // 样式与名称一致：深灰字 + 白色粗描边 + 阴影
                 if item.quantity >= 2 {
-                    ZStack {
-                        let text = "x\(item.quantity)"
-                        // 1. 描边层 (White Stroke)
-                        Group {
-                            // 外圈
-                            Text(text).offset(x: 2.5, y: 0)
-                            Text(text).offset(x: -2.5, y: 0)
-                            Text(text).offset(x: 0, y: 2.5)
-                            Text(text).offset(x: 0, y: -2.5)
-                            
-                            Text(text).offset(x: 1.8, y: 1.8)
-                            Text(text).offset(x: -1.8, y: -1.8)
-                            Text(text).offset(x: 1.8, y: -1.8)
-                            Text(text).offset(x: -1.8, y: 1.8)
-                            
-                            // 内圈
-                            Text(text).offset(x: 1.2, y: 0)
-                            Text(text).offset(x: -1.2, y: 0)
-                            Text(text).offset(x: 0, y: 1.2)
-                            Text(text).offset(x: 0, y: -1.2)
-                            
-                            Text(text) // 中间填充
-                        }
+                    let text = "x\(item.quantity)"
+                    Text(text)
                         .font(.system(size: 16, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.1), radius: 2, x: 1, y: 1)
-                        
-                        // 2. 顶层：文字本体 (深灰色)
-                        Text(text)
-                            .font(.system(size: 16, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color(white: 0.3))
-                    }
-                    .padding(6)
-                    .offset(x: 5, y: -5)
+                        .foregroundStyle(Color(white: 0.3))
+                        // 使用 shadow 模拟白色描边，避免多层 Text 导致布局不一致
+                        .shadow(color: .white, radius: 0, x: 1.5, y: 1.5)
+                        .shadow(color: .white, radius: 0, x: -1.5, y: -1.5)
+                        .shadow(color: .white, radius: 0, x: 1.5, y: -1.5)
+                        .shadow(color: .white, radius: 0, x: -1.5, y: 1.5)
+                        .shadow(color: .white, radius: 1, x: 0, y: 0) // 增加一点柔和度
+                        .shadow(color: .black.opacity(0.1), radius: 2, x: 1, y: 1) // 投影
+                        .padding(6)
+                        .offset(x: 5, y: -5)
                 }
             }
             .zIndex(1) // 确保图片在文字上方 (如果需要文字压图则改小)
             
             // 文字区域 (贴纸风格：深灰字 + 白色粗描边 + 阴影)
-            ZStack {
-                // 1. 描边层 (White Stroke)
-                // 通过叠加多个偏移的白色文字来模拟粗描边
-                // 增加 offset 到 2.5，让描边更粗
-                // 增加更多的角度覆盖，防止描边出现锯齿或空隙
-                Group {
-                    // 外圈
-                    Text(item.name).offset(x: 2.5, y: 0)
-                    Text(item.name).offset(x: -2.5, y: 0)
-                    Text(item.name).offset(x: 0, y: 2.5)
-                    Text(item.name).offset(x: 0, y: -2.5)
-                    
-                    Text(item.name).offset(x: 1.8, y: 1.8)
-                    Text(item.name).offset(x: -1.8, y: -1.8)
-                    Text(item.name).offset(x: 1.8, y: -1.8)
-                    Text(item.name).offset(x: -1.8, y: 1.8)
-                    
-                    // 内圈 (填补空隙)
-                    Text(item.name).offset(x: 1.2, y: 0)
-                    Text(item.name).offset(x: -1.2, y: 0)
-                    Text(item.name).offset(x: 0, y: 1.2)
-                    Text(item.name).offset(x: 0, y: -1.2)
-                    
-                    Text(item.name) // 中间填充
-                }
+            // 使用单个 Text + 多个 Shadow 模拟描边，彻底解决多行文字布局不一致的问题
+            Text(item.name)
                 .font(.system(size: 16, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-                // 调整投影：透明度从 0.2 降到 0.1，更淡一些
-                .shadow(color: .black.opacity(0.1), radius: 2, x: 1, y: 1)
-                
-                // 2. 顶层：文字本体 (深灰色)
-                Text(item.name)
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .foregroundStyle(Color(white: 0.3))
-            }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 4)
-            .zIndex(2) // 文字层级
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .foregroundStyle(Color(white: 0.3))
+                // 使用 shadow 模拟白色描边
+                .shadow(color: .white, radius: 0, x: 1.5, y: 1.5)
+                .shadow(color: .white, radius: 0, x: -1.5, y: -1.5)
+                .shadow(color: .white, radius: 0, x: 1.5, y: -1.5)
+                .shadow(color: .white, radius: 0, x: -1.5, y: 1.5)
+                .shadow(color: .white, radius: 1, x: 0, y: 0) // 增加一点柔和度
+                .shadow(color: .black.opacity(0.1), radius: 2, x: 1, y: 1) // 投影
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
+                .zIndex(2) // 文字层级
         }
         .rotationEffect(.degrees(rotationAngle)) // 应用随机旋转
         .padding()
+        // 移除 drawingGroup() 以修复缩放后的渲染问题（图片不更新、文字错乱）
+        // .drawingGroup()
     }
 }
 
