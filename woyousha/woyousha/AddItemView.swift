@@ -45,6 +45,7 @@ struct AddItemView: View {
     @State private var showErrorAlert = false // 控制错误弹窗显示
     @State private var showActionSheet = false // 控制图片选择方式弹窗
     @State private var showPhotoPicker = false // 控制相册选择器显示
+    @State private var isAnalyzingImage = false // 是否正在进行 AI 识别
 
     var body: some View {
         NavigationStack {
@@ -65,20 +66,25 @@ struct AddItemView: View {
                                         .shadow(radius: 4)
                                     
                                     // AI 处理中的 Loading 遮罩
-                                    if isProcessingImage {
+                                    if isProcessingImage || isAnalyzingImage {
                                         ZStack {
                                             Color.black.opacity(0.3)
                                                 .cornerRadius(12)
-                                            ProgressView("AI 抠图中...")
-                                                .foregroundStyle(.white)
-                                                .tint(.white)
+                                            VStack {
+                                                ProgressView()
+                                                    .tint(.white)
+                                                Text(isProcessingImage ? "AI 抠图中..." : "AI 识别中...")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.white)
+                                                    .padding(.top, 4)
+                                            }
                                         }
                                         .frame(height: 200)
                                     }
                                 }
                                 .overlay(alignment: .topTrailing) {
                                     // 删除图片按钮
-                                    if !isProcessingImage {
+                                    if !isProcessingImage && !isAnalyzingImage {
                                         Button {
                                             withAnimation {
                                                 selectedImage = nil
@@ -95,8 +101,8 @@ struct AddItemView: View {
                                     }
                                 }
                                 
-                                // 重新选择/拍照按钮 (替代原来的抠图按钮)
-                                if !isProcessingImage {
+                                // 操作按钮区域
+                                if !isProcessingImage && !isAnalyzingImage {
                                     Button("更换图片") {
                                         showActionSheet = true
                                     }
@@ -264,6 +270,42 @@ struct AddItemView: View {
         }
     }
     
+    // 调用豆包 AI 识别图片
+    private func analyzeImage() {
+        guard let image = selectedImage else { return }
+        
+        isAnalyzingImage = true
+        
+        Task {
+            do {
+                let result = try await DoubaoService.shared.analyzeImage(image: image)
+                await MainActor.run {
+                    // 自动填充识别结果
+                    withAnimation {
+                        self.name = result.name
+                        self.category = result.category
+                    }
+                    isAnalyzingImage = false
+                }
+            } catch {
+                await MainActor.run {
+                    isAnalyzingImage = false
+                    print("AI 识别失败: \(error)")
+                    // 优化错误提示，区分网络错误
+                    if let error = error as? DoubaoService.AnalysisError, case .networkError = error {
+                        errorMessage = "网络连接失败，请检查网络后重试"
+                    } else {
+                        errorMessage = "AI 识别失败，请手动输入"
+                    }
+                    // 只有在用户显式需要反馈时才弹窗，或者使用更轻量的 Toast
+                    // 这里为了不打断自动流程，我们选择只在控制台打印，或者使用一个不阻断的 Toast
+                    // 但目前的架构是 Alert，所以我们先保持 Alert，但让文案更友好
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
+    
     // AI 抠图逻辑
     private func removeBackground() {
         guard let inputImage = selectedImage else { return }
@@ -280,6 +322,13 @@ struct AddItemView: View {
                          selectedImage = outputImage
                     }
                     isProcessingImage = false
+                    
+                    // 抠图完成后，自动触发 AI 识别
+                    // 使用处理后的图片（其实最好用原图，但这里为了流程简单先用当前图，
+                    // 或者我们应该在抠图开始前就并行做识别？
+                    // 考虑到识别需要原图细节可能更好，但抠图后的主体更明确。
+                    // 这里我们选择在抠图成功后，自动调用 analyzeImage
+                    analyzeImage()
                 }
             } else {
                 await MainActor.run {
