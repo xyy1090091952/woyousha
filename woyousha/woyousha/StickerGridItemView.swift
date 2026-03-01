@@ -27,15 +27,42 @@ struct StickerGridItemView: View {
         return Double(hash)
     }
     
+    // 计算优化后的显示尺寸，使不同宽高比的图片视觉面积接近
+    private func calculateDisplayHeight(for image: UIImage) -> CGFloat {
+        let aspectRatio = image.size.width / image.size.height
+        var displayHeight = height
+        
+        // 如果是横长图片 (宽 > 高)，适当减小显示高度
+        // 使得视觉面积 (area = width * height) 与正方形图片接近
+        // 正方形: h*h, 横长: w*h = ratio*h*h
+        // 令 ratio*h'*h' = h*h -> h' = h / sqrt(ratio)
+        if aspectRatio > 1.0 {
+            // 使用 0.6 次方而不是 0.5 (sqrt)，让惩罚稍微轻一点，避免过小
+            let scaleFactor = pow(aspectRatio, 0.6)
+            displayHeight = height / scaleFactor
+            // 设置一个最小高度下限，防止过扁
+            displayHeight = max(displayHeight, height * 0.5)
+        }
+        
+        // 如果是竖长图片 (高 > 宽)，通常不需要额外处理，或者可以稍微放大一点点
+        // 但受限于网格布局的行高，我们保持 height 不变，宽度会自动变窄
+        
+        return displayHeight
+    }
+    
     var body: some View {
         VStack(spacing: -10) { // 负间距，让文字稍微往上贴一点，更有贴纸感
             // 图片区域
             ZStack(alignment: .topTrailing) {
                 if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
+                    let displayHeight = calculateDisplayHeight(for: uiImage)
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFit()
-                        .frame(height: height) // 使用动态高度
+                        // 使用 frame(width:height:) 约束，但只约束高度，宽度自适应
+                        // 注意：这里我们只设置高度，让宽度自适应，但高度是经过计算的
+                        // 或者更稳妥地，使用 frame(width:height:) 如果我们确信比例
+                        .frame(height: displayHeight)
                         // 强制 Image 在 height 变化时刷新
                         .id("image-\(item.id)-\(height)")
                         // 贴纸阴影：模拟微微翘起的效果

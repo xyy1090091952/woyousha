@@ -474,7 +474,7 @@ struct ContentView: View {
                                 gridColumnCount = clampedCount
                             }
                         }
-                        .onEnded { _ in
+                        .onEnded { _ in // 忽略 onEnded 传入的 value，使用 onChanged 中记录的 preciseColumnCount
                             // 关键修正：直接使用 onChanged 中计算并记录的精确值
                             // 避免 onEnded 中 value 可能存在的误差或不一致问题
                             // 同时限制 baseColumnCount 在合理范围内 (2~5)
