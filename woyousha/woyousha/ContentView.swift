@@ -58,6 +58,8 @@ struct ContentView: View {
     // 网格布局状态
     @State private var gridColumnCount: Int = 2
     @State private var baseColumnCount: CGFloat = 2.0
+    // 用于在缩放过程中记录精确的列数计算结果
+    @State private var preciseColumnCount: CGFloat = 2.0
     // 是否正在缩放 (用于防止误触)
     @State private var isScaling = false
     
@@ -461,20 +463,22 @@ struct ContentView: View {
                             // value > 1 (放大) -> 列数减少 (物品变大)
                             // value < 1 (缩小) -> 列数增加 (物品变小)
                             let newCount = baseColumnCount / value
+                            // 记录精确计算值
+                            preciseColumnCount = newCount
+                            
                             let clampedCount = min(max(Int(round(newCount)), 2), 5)
                             
                             if gridColumnCount != clampedCount {
-                                withAnimation(.spring()) {
-                                    gridColumnCount = clampedCount
-                                }
+                                // 移除 withAnimation，避免与 .id(gridColumnCount) 强制重建产生冲突
+                                // 导致 Invalid sample AnimatablePair 错误
+                                gridColumnCount = clampedCount
                             }
                         }
-                        .onEnded { value in
-                            // 关键修正：保留小数位精度
-                            // 不要直接用 gridColumnCount 更新 baseColumnCount，
-                            // 而是根据最后的手势值计算新的 base，但限制在合理范围内 (2~5)
-                            let newCount = baseColumnCount / value
-                            baseColumnCount = min(max(newCount, 2.0), 5.0)
+                        .onEnded { _ in
+                            // 关键修正：直接使用 onChanged 中计算并记录的精确值
+                            // 避免 onEnded 中 value 可能存在的误差或不一致问题
+                            // 同时限制 baseColumnCount 在合理范围内 (2~5)
+                            baseColumnCount = min(max(preciseColumnCount, 2.0), 5.0)
                             
                             // 延迟恢复点击，防止松手瞬间误触
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
