@@ -48,9 +48,6 @@ struct HomeDecorationView: View {
     // 是否处于预览模式 (如果为 true，则不显示导航栏，作为组件嵌入)
     var isPreviewMode: Bool = false
     
-    // 可见区域高度 (用于调整中心点)
-    var visibleHeight: CGFloat?
-    
     // 视图状态
     @State private var offset: CGSize = .zero // 画布偏移
     @State private var lastOffset: CGSize = .zero
@@ -68,11 +65,10 @@ struct HomeDecorationView: View {
     @Binding var selectedContainerID: String?
     
     // 初始化时允许设置是否直接进入编辑模式
-    init(isPreviewMode: Bool = false, isEditing: Bool = false, selectedContainerID: Binding<String?> = .constant(nil), visibleHeight: CGFloat? = nil) {
+    init(isPreviewMode: Bool = false, isEditing: Bool = false, selectedContainerID: Binding<String?> = .constant(nil)) {
         self.isPreviewMode = isPreviewMode
         _isEditing = State(initialValue: isEditing)
         self._selectedContainerID = selectedContainerID
-        self.visibleHeight = visibleHeight
     }
     
     // 接收外部传入的编辑状态绑定 (可选)
@@ -114,11 +110,10 @@ struct HomeDecorationView: View {
                     }
                 }
                 // 初始位置调整：预览模式下可能需要不同的初始偏移
-                // 如果传入了 visibleHeight，则使用它来计算中心点
-                .offset(
-                    x: geo.size.width / 2 + offset.width,
-                    y: (visibleHeight.map { $0 / 2 } ?? geo.size.height / (isPreviewMode ? 2.0 : 4)) + offset.height
-                )
+                // 预览模式下，为了避免顶部被切割，将中心点进一步下移
+                // 之前的 2.5 可能不够，改为 2.2 或者 2.0，数值越小越靠下
+                // 由于现在 ignoreSafeArea 了，可能需要稍微上移一点点补偿？或者保持 2.0 观察效果
+                .offset(x: geo.size.width / 2 + offset.width, y: geo.size.height / (isPreviewMode ? 2.0 : 4) + offset.height)
                 .scaleEffect(scale)
             }
             // 将手势添加到外层，并设置内容形状以确保空白区域也可点击
