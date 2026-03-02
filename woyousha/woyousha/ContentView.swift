@@ -107,6 +107,52 @@ struct ContentView: View {
                     }
                 }
             }
+            .onChange(of: selectedFilter) { oldFilter, newValue in
+                // 反向联动：当用户在列表点击容器时，更新 selectedContainerID 以高亮家具
+                if case .specific(let container) = newValue {
+                    withAnimation {
+                        selectedContainerID = container.id.uuidString
+                    }
+                } else if newValue == .all {
+                    // 只有当明确切换到“全部”时，才取消家具高亮
+                    withAnimation {
+                        selectedContainerID = nil
+                    }
+                } else if newValue == .unclassified {
+                    // 切换到“未分类”时，也取消家具高亮，因为未分类没有对应的家具实体
+                    withAnimation {
+                        selectedContainerID = nil
+                    }
+                }
+            }
+            .onChange(of: selectedContainerID) { _, newValue in
+                // 仅当 selectedContainerID 变为 nil 时，需要判断是否是被动变动
+                // 如果是从 specific -> unclassified 过程中，selectedContainerID 会被置空
+                // 此时不应该触发 selectedFilter = .all
+                
+                if let id = newValue,
+                   let container = containers.first(where: { $0.id.uuidString == id }) {
+                    withAnimation {
+                        selectedFilter = .specific(container)
+                    }
+                } else if newValue == nil {
+                     // 只有当前已经在 .specific 状态下，且不是因为切换到其他 tab 导致的置空，才重置为 .all
+                     // 但这里很难区分是用户点击家具取消选中，还是因为 filter 变了导致 id 置空
+                     
+                     // 解决方案：我们只处理“用户点击家具取消选中”的情况。
+                     // 如果是因为 filter 变化导致的 id 置空，在 filter 的 onChange 里已经处理了逻辑。
+                     // 但是这两个 onChange 是相互独立的。
+                     
+                     // 简单策略：如果当前是 specific 状态，且 id 变为空，说明可能是用户取消了选中，此时切回 all 是合理的。
+                     // 但如果当前是 unclassified，id 变为空（本来就是空），则不应切回 all。
+                     
+                     if case .specific = selectedFilter {
+                         withAnimation {
+                             selectedFilter = .all
+                         }
+                     }
+                }
+            }
             // 底部垃圾桶区域（仅在拖拽时显示，或者在编辑模式下显示）
             .overlay(alignment: .bottom) {
                 // 当处于编辑模式，或者正在拖拽物品时显示垃圾桶
@@ -119,6 +165,9 @@ struct ContentView: View {
     
     // 装修模式的全屏覆盖
     @State private var showDecorationSheet = false
+    
+    // 选中的容器 ID (用于联动)
+    @State private var selectedContainerID: String?
     
     // MARK: - Views
     
@@ -133,11 +182,12 @@ struct ContentView: View {
             ZStack {
                 // 使用 HomeDecorationView 作为背景预览
                 // 开启 isPreviewMode，隐藏导航栏和底部抽屉
-                HomeDecorationView(isPreviewMode: true)
-                    .frame(height: 380) // 增加高度以展示更多内容，避免顶部切割
-                    .clipped() // 裁剪超出部分，防止遮挡下方内容
+                // 传递 selectedContainerID 绑定
+                HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
+                    .frame(height: 420) // 增加高度以展示更多内容，并覆盖顶部安全区域
             }
-            .background(Color.blue.opacity(0.05))
+            // .background(Color.blue.opacity(0.05)) // 移除浅蓝色背景
+            .ignoresSafeArea(edges: .top) // 忽略顶部安全区域，让背景通顶
             .onTapGesture {
                 // 点击整个区域也可以进入装修模式？或者只是预览交互
                 // 用户说“在首页预览的页面不应该看得到所谓的仓库，应该就是个纯预览”
@@ -216,64 +266,10 @@ struct ContentView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
                 // "全部" 容器
-                VStack(spacing: 4) {
-                    Image(systemName: "square.grid.2x2")
-                        .font(.title2)
-                        .frame(width: 44, height: 44)
-                        .foregroundStyle(selectedFilter == .all ? .white : .gray)
-                        .background(selectedFilter == .all ? Color.blue : Color.gray.opacity(0.1))
-                        .clipShape(Circle())
-                    
-                    Text("全部")
-                        .font(.caption)
-                        .fontWeight(selectedFilter == .all ? .bold : .regular)
-                        .foregroundStyle(selectedFilter == .all ? .black : .gray)
-                }
-                .onTapGesture {
-                    withAnimation {
-                        selectedFilter = .all
-                    }
-                }
+                allContainerButton
                 
                 // "未分类" 容器
-                VStack(spacing: 4) {
-                    Image(systemName: "questionmark.square.dashed")
-                        .font(.title2)
-                        .frame(width: 44, height: 44)
-                        .foregroundStyle(selectedFilter == .unclassified ? .white : .gray)
-                        .background(selectedFilter == .unclassified ? Color.blue : Color.gray.opacity(0.1))
-                        .clipShape(Circle())
-                    
-                    Text("未分类")
-                        .font(.caption)
-                        .fontWeight(selectedFilter == .unclassified ? .bold : .regular)
-                        .foregroundStyle(selectedFilter == .unclassified ? .black : .gray)
-                }
-                .onTapGesture {
-                    withAnimation {
-                        selectedFilter = .unclassified
-                    }
-                }
-                .dropDestination(for: String.self) { items, location in
-                    var idsToProcess = Set(items)
-                    if !selectedItems.isEmpty {
-                        let selectedIds = Set(selectedItems.map { $0.id.uuidString })
-                        if !idsToProcess.isDisjoint(with: selectedIds) {
-                            idsToProcess.formUnion(selectedIds)
-                        }
-                    }
-                    
-                    for id in idsToProcess {
-                        if let item = allItems.first(where: { $0.id.uuidString == id }) {
-                            withAnimation {
-                                item.container = nil // 移出容器
-                                item.updatedDate = Date()
-                            }
-                        }
-                    }
-                    selectedItems.removeAll()
-                    return true
-                } isTargeted: { _ in }
+                unclassifiedContainerButton
                 
                 // 现有容器列表
                 ForEach(containers) { container in
@@ -282,28 +278,7 @@ struct ContentView: View {
                         isSelected: selectedFilter == .specific(container)
                     ) { items in
                         // 处理 Drop 逻辑
-                        var idsToProcess = Set(items)
-                        
-                        // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
-                        if !selectedItems.isEmpty {
-                            let selectedIds = Set(selectedItems.map { $0.id.uuidString })
-                            if !idsToProcess.isDisjoint(with: selectedIds) {
-                                idsToProcess.formUnion(selectedIds)
-                            }
-                        }
-                        
-                        for id in idsToProcess {
-                            if let item = allItems.first(where: { $0.id.uuidString == id }) {
-                                // 移动物品到该容器
-                                withAnimation {
-                                    item.container = container
-                                    item.updatedDate = Date()
-                                }
-                            }
-                        }
-                        
-                        // 操作完成后清空选中状态
-                        selectedItems.removeAll()
+                        handleDrop(items: items, to: container)
                         return true
                     }
                     .onTapGesture {
@@ -311,7 +286,6 @@ struct ContentView: View {
                             selectedFilter = .specific(container)
                         }
                     }
-                    // 长按编辑容器
                     .onLongPressGesture {
                         selectedFilter = .specific(container)
                         showEditContainerSheet = true
@@ -319,27 +293,102 @@ struct ContentView: View {
                 }
                 
                 // 添加容器按钮
-                Button(action: { showAddContainerSheet = true }) {
-                    VStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.title2)
-                            .frame(width: 44, height: 44)
-                            .foregroundStyle(.gray)
-                            .background(Color.gray.opacity(0.1))
-                            .clipShape(Circle())
-                        
-                        Text("添加")
-                            .font(.caption)
-                            .foregroundStyle(.gray)
-                    }
-                }
+                addContainerButton
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .background(Color.white.opacity(0.5))
-        // 防止 tooltip 被 ScrollView 裁剪
+        .background(Color.white)
         .scrollClipDisabled()
+    }
+    
+    // 拆分出单独的视图组件，解决 ViewBuilder 过于复杂的问题
+    private var allContainerButton: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "square.grid.2x2")
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .foregroundStyle(selectedFilter == .all ? .white : .gray)
+                .background(selectedFilter == .all ? Color.blue : Color.gray.opacity(0.1))
+                .clipShape(Circle())
+            
+            Text("全部")
+                .font(.caption)
+                .fontWeight(selectedFilter == .all ? .bold : .regular)
+                .foregroundStyle(selectedFilter == .all ? .black : .gray)
+        }
+        .onTapGesture {
+            withAnimation {
+                selectedFilter = .all
+            }
+        }
+    }
+    
+    private var unclassifiedContainerButton: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "questionmark.square.dashed")
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .foregroundStyle(selectedFilter == .unclassified ? .white : .gray)
+                .background(selectedFilter == .unclassified ? Color.blue : Color.gray.opacity(0.1))
+                .clipShape(Circle())
+            
+            Text("未分类")
+                .font(.caption)
+                .fontWeight(selectedFilter == .unclassified ? .bold : .regular)
+                .foregroundStyle(selectedFilter == .unclassified ? .black : .gray)
+        }
+        .onTapGesture {
+            withAnimation {
+                selectedFilter = .unclassified
+            }
+        }
+        .dropDestination(for: String.self) { items, location in
+            handleDrop(items: items, to: nil)
+            return true
+        } isTargeted: { _ in }
+    }
+    
+    private var addContainerButton: some View {
+        Button(action: { showAddContainerSheet = true }) {
+            VStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.title2)
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.gray)
+                    .background(Color.gray.opacity(0.1))
+                    .clipShape(Circle())
+                
+                Text("添加")
+                    .font(.caption)
+                    .foregroundStyle(.gray)
+            }
+        }
+    }
+    
+    // 处理拖拽放置逻辑
+    private func handleDrop(items: [String], to targetContainer: Container?) {
+        var idsToProcess = Set(items)
+        
+        // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
+        if !selectedItems.isEmpty {
+            let selectedIds = Set(selectedItems.map { $0.id.uuidString })
+            if !idsToProcess.isDisjoint(with: selectedIds) {
+                idsToProcess.formUnion(selectedIds)
+            }
+        }
+        
+        for id in idsToProcess {
+            if let item = allItems.first(where: { $0.id.uuidString == id }) {
+                withAnimation {
+                    item.container = targetContainer
+                    item.updatedDate = Date()
+                }
+            }
+        }
+        
+        // 操作完成后清空选中状态
+        selectedItems.removeAll()
     }
     
     // 计算动态高度
@@ -516,6 +565,7 @@ struct ContentView: View {
                 )
             }
         }
+        .background(Color.white) // 确保网格区域也是白色背景
         // 拖拽时禁用滚动，防止列表滑动到最底部
         .scrollDisabled(!draggingItems.isEmpty)
         // 关键：通过监听拖拽手势来主动阻止 ScrollView 的滚动事件
@@ -610,23 +660,33 @@ struct ContentView: View {
     
     // 抽离删除逻辑
     private func handleDelete(items: [String]) {
-        var idsToProcess = Set(items)
+        let idsToProcess = Set(items)
+        var itemsToDelete: Set<Item> = []
         
-        // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
+        // 1. 如果拖拽的物品在选中列表中，则删除所有选中的物品
         if !selectedItems.isEmpty {
             let selectedIds = Set(selectedItems.map { $0.id.uuidString })
+            // 只要有一个拖拽的 ID 在选中列表中，就视为批量操作
             if !idsToProcess.isDisjoint(with: selectedIds) {
-                idsToProcess.formUnion(selectedIds)
+                itemsToDelete = selectedItems
+            }
+        }
+        
+        // 2. 如果没有触发批量操作（比如拖拽未选中的单个物品），则只删除拖拽的物品
+        if itemsToDelete.isEmpty {
+            for id in idsToProcess {
+                if let item = allItems.first(where: { $0.id.uuidString == id }) {
+                    itemsToDelete.insert(item)
+                }
             }
         }
         
         // 执行删除
         withAnimation {
-            for id in idsToProcess {
-                if let item = allItems.first(where: { $0.id.uuidString == id }) {
-                    modelContext.delete(item)
-                }
+            for item in itemsToDelete {
+                modelContext.delete(item)
             }
+            // 清理状态
             selectedItems.removeAll()
             draggingItems.removeAll()
             isTrashBinActive = false

@@ -61,10 +61,14 @@ struct HomeDecorationView: View {
     // 编辑模式状态
     @State private var isEditing = false
     
+    // 选中的容器 ID (用于联动)
+    @Binding var selectedContainerID: String?
+    
     // 初始化时允许设置是否直接进入编辑模式
-    init(isPreviewMode: Bool = false, isEditing: Bool = false) {
+    init(isPreviewMode: Bool = false, isEditing: Bool = false, selectedContainerID: Binding<String?> = .constant(nil)) {
         self.isPreviewMode = isPreviewMode
         _isEditing = State(initialValue: isEditing)
+        self._selectedContainerID = selectedContainerID
     }
     
     // 接收外部传入的编辑状态绑定 (可选)
@@ -78,6 +82,7 @@ struct HomeDecorationView: View {
                 Color(hex: "F2F2F7").ignoresSafeArea()
             } else {
                 Color.clear
+                    // 如果在预览模式下需要通顶，这里也可以加 ignoresSafeArea，但主要依赖外层容器
             }
             
             // Isometric 画布
@@ -99,14 +104,16 @@ struct HomeDecorationView: View {
                     // 3. 绘制正在拖拽的家具 (幽灵图)
                     if let container = draggingContainer {
                         let originalPos = IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY)
-                        FurnitureView(container: container)
+                        FurnitureView(container: container, isSelected: false) // 拖拽时不显示选中态
                             .position(x: originalPos.x + dragOffset.width, y: originalPos.y + dragOffset.height)
                             .zIndex(100) // 确保拖拽时在最上层
                     }
                 }
                 // 初始位置调整：预览模式下可能需要不同的初始偏移
-                // 预览模式下，为了避免顶部被切割，将中心点下移 (height / 2.5) - 稍微向上移动一点，避免底部被遮挡
-                .offset(x: geo.size.width / 2 + offset.width, y: geo.size.height / (isPreviewMode ? 2.5 : 4) + offset.height)
+                // 预览模式下，为了避免顶部被切割，将中心点进一步下移
+                // 之前的 2.5 可能不够，改为 2.2 或者 2.0，数值越小越靠下
+                // 由于现在 ignoreSafeArea 了，可能需要稍微上移一点点补偿？或者保持 2.0 观察效果
+                .offset(x: geo.size.width / 2 + offset.width, y: geo.size.height / (isPreviewMode ? 2.0 : 4) + offset.height)
                 .scaleEffect(scale)
             }
             // 将手势添加到外层，并设置内容形状以确保空白区域也可点击
@@ -332,16 +339,27 @@ struct HomeDecorationView: View {
     // 家具层
     var furnitureLayer: some View {
         ForEach(containers.filter { $0.isPlaced }) { container in
-            FurnitureView(container: container)
+            FurnitureView(container: container, isSelected: selectedContainerID == container.id.uuidString)
                 .opacity(draggingContainer?.id == container.id ? 0 : 1) // 拖拽时隐藏原位置家具
                 .position(IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY))
                 .zIndex(Double(container.gridX + container.gridY)) // 简单的深度排序
                 .onTapGesture {
-                    // 仅在编辑模式下允许交互
+                    // 1. 编辑模式下：点击进入编辑/收回
                     if isEditing {
-                        // 点击家具，可以弹窗编辑或收回
+                         // 点击家具，可以弹窗编辑或收回
+                         withAnimation {
+                             container.isPlaced = false
+                         }
+                    } 
+                    // 2. 预览模式下：点击选中容器，并通知外部
+                    else {
                         withAnimation {
-                            container.isPlaced = false
+                            // 点击切换选中状态
+                            if selectedContainerID == container.id.uuidString {
+                                selectedContainerID = nil
+                            } else {
+                                selectedContainerID = container.id.uuidString
+                            }
                         }
                     }
                 }
@@ -441,6 +459,7 @@ struct HomeDecorationView: View {
 // 单个家具视图
 struct FurnitureView: View {
     let container: Container
+    var isSelected: Bool = false // 是否选中 (用于高亮)
     
     // 动态计算家具图片
     var furnitureConfig: FurnitureConfig? {
@@ -475,6 +494,21 @@ struct FurnitureView: View {
                             .offset(y: config.offsetY)
                             // 确保图片可以超出锚点范围显示
                             .fixedSize() 
+                            // 选中高亮效果：直接应用在图片上
+                            .shadow(color: isSelected ? .yellow : .clear, radius: isSelected ? 4 : 0)
+                            .overlay {
+                                if isSelected {
+                                    // 叠加一个微弱的黄色光晕，增强可见性
+                                    Image(config.imageName)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: IsoGridConfig.tileWidth * CGFloat(max(config.width, config.depth)) * config.scale)
+                                        .offset(y: config.offsetY)
+                                        .fixedSize()
+                                        .blendMode(.overlay)
+                                        .opacity(0.3)
+                                }
+                            }
                     }
             } else {
                 // 降级渲染：原来的蓝盒子
