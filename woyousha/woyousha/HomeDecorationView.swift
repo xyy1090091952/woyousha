@@ -75,6 +75,10 @@ struct HomeDecorationView: View {
     // 如果作为独立页面，使用内部 isEditing
     // 如果作为组件嵌入，可以通过 Binding 控制（这里简化处理，组件嵌入时默认不可编辑，点击按钮跳转到全屏编辑）
     
+    // 墙壁和地板的纹理状态 (暂时硬编码，后续可从数据模型加载)
+    @State private var floorTexture: String = "green"
+    @State private var wallTexture: String = "light_yellow"
+    
     var body: some View {
         ZStack {
             // 背景色 (预览模式下可能不需要背景，或者使用透明背景)
@@ -186,52 +190,103 @@ struct HomeDecorationView: View {
     var roomStructureLayer: some View {
         ZStack {
             // 1. 地面 (Floor)
-            // 菱形区域，连接四个角
-            Path { path in
-                let top = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
-                let right = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
-                let bottom = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: IsoGridConfig.gridSize)
-                let left = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
-                
-                path.move(to: top)
-                path.addLine(to: right)
-                path.addLine(to: bottom)
-                path.addLine(to: left)
-                path.closeSubpath()
-            }
-            .fill(Color(hex: "E0E0E0")) // 浅灰色地面
+            // 修复平铺问题：
+            // 1. 先用 Rectangle 填充 ImagePaint (这会产生平铺纹理)
+            // 2. 对 Rectangle 进行 3D 变换
+            // 3. 最后用 mask 裁剪
+            Rectangle()
+                .fill(ImagePaint(image: Image(floorTexture), scale: 0.5))
+                .frame(width: 1000, height: 1000) // 足够大的画布以容纳旋转后的内容
+                .rotationEffect(.degrees(45))
+                .scaleEffect(x: 1.0, y: 0.5)
+                .position(x: IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize/2, gridY: IsoGridConfig.gridSize/2).x,
+                          y: IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize/2, gridY: IsoGridConfig.gridSize/2).y)
+                .mask(
+                    Path { path in
+                        let top = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                        let right = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                        let bottom = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: IsoGridConfig.gridSize)
+                        let left = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                        
+                        path.move(to: top)
+                        path.addLine(to: right)
+                        path.addLine(to: bottom)
+                        path.addLine(to: left)
+                        path.closeSubpath()
+                    }
+                )
             
-            // 2. 左后墙 (Left Wall) - 对应 gridY 轴方向 (0,0) -> (0,8)
-            // 在屏幕上是从 Top 点向左下延伸的边
-            Path { path in
-                let wallHeight: CGFloat = 200 // 墙壁高度
-                
-                let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0) // Top Corner (Far)
-                let p2 = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize) // Left Corner
-                
-                path.move(to: p1)
-                path.addLine(to: p2)
-                path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
-                path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
-                path.closeSubpath()
-            }
-            .fill(Color(hex: "D0D0D0")) // 稍微深一点的灰色
+            // 2. 左后墙 (Left Wall) - 对应 gridY 变化，屏幕上向左下延伸
+            Rectangle()
+                .fill(ImagePaint(image: Image(wallTexture), scale: 0.5))
+                .frame(width: 800, height: 800)
+                // 变换矩阵：Left Wall 斜率为 -0.5
+                .projectionEffect(.init(CGAffineTransform(a: 1, b: -0.5, c: 0, d: 1, tx: 0, ty: 0)))
+                // 调整位置：左墙中心大概在左侧
+                .position(x: -200, y: 0) 
+                .mask(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                        let p2 = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                        
+                        path.move(to: p1)
+                        path.addLine(to: p2)
+                        path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
+                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                        path.closeSubpath()
+                    }
+                )
+                .overlay(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                        let p2 = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                        
+                        path.move(to: p1)
+                        path.addLine(to: p2)
+                        path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
+                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                        path.closeSubpath()
+                    }
+                    .fill(Color.black.opacity(0.1))
+                )
+
             
-            // 3. 右后墙 (Right Wall) - 对应 gridX 轴方向 (0,0) -> (8,0)
-            // 在屏幕上是从 Top 点向右下延伸的边
-            Path { path in
-                let wallHeight: CGFloat = 200
-                
-                let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0) // Top Corner (Far)
-                let p2 = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0) // Right Corner
-                
-                path.move(to: p1)
-                path.addLine(to: p2)
-                path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
-                path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
-                path.closeSubpath()
-            }
-            .fill(Color(hex: "C0C0C0")) // 再深一点的灰色，区分光影
+            // 3. 右后墙 (Right Wall) - 对应 gridX 变化，屏幕上向右下延伸
+            Rectangle()
+                .fill(ImagePaint(image: Image(wallTexture), scale: 0.5))
+                .frame(width: 800, height: 800)
+                // 变换矩阵：Right Wall 斜率为 0.5
+                .projectionEffect(.init(CGAffineTransform(a: 1, b: 0.5, c: 0, d: 1, tx: 0, ty: 0)))
+                .position(x: 200, y: 0)
+                .mask(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                        let p2 = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                        
+                        path.move(to: p1)
+                        path.addLine(to: p2)
+                        path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
+                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                        path.closeSubpath()
+                    }
+                )
+                .overlay(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                        let p2 = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                        
+                        path.move(to: p1)
+                        path.addLine(to: p2)
+                        path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
+                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                        path.closeSubpath()
+                    }
+                    .fill(Color.white.opacity(0.05))
+                )
         }
     }
     
@@ -339,7 +394,7 @@ struct HomeDecorationView: View {
     // 家具层
     var furnitureLayer: some View {
         ForEach(containers.filter { $0.isPlaced }) { container in
-            FurnitureView(container: container, isSelected: selectedContainerID == container.id.uuidString)
+            let view = FurnitureView(container: container, isSelected: selectedContainerID == container.id.uuidString)
                 .opacity(draggingContainer?.id == container.id ? 0 : 1) // 拖拽时隐藏原位置家具
                 .position(IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY))
                 .zIndex(Double(container.gridX + container.gridY)) // 简单的深度排序
@@ -363,9 +418,11 @@ struct HomeDecorationView: View {
                         }
                     }
                 }
-                // 添加拖拽手势
-                .gesture(
-                    isEditing ? DragGesture()
+            
+            // 仅在编辑模式下添加拖拽手势
+            if isEditing {
+                view.gesture(
+                    DragGesture()
                         .onChanged { value in
                             // 开始拖拽或更新拖拽位置
                             if draggingContainer == nil {
@@ -376,27 +433,32 @@ struct HomeDecorationView: View {
                         }
                         .onEnded { value in
                             // 拖拽结束，计算新位置
-                            let currentPos = IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY)
-                            let finalPos = CGPoint(x: currentPos.x + value.translation.width, y: currentPos.y + value.translation.height)
-                            
-                            // 转换回网格坐标
-                            let (newX, newY) = IsoGridConfig.toGrid(screenX: finalPos.x, screenY: finalPos.y)
-                            
-                            // 边界检查 (0...7)
-                            let clampedX = max(0, min(IsoGridConfig.gridSize - 1, newX))
-                            let clampedY = max(0, min(IsoGridConfig.gridSize - 1, newY))
-                            
-                            // 更新位置
-                            withAnimation {
-                                container.gridX = clampedX
-                                container.gridY = clampedY
+                            if let dragging = draggingContainer, dragging.id == container.id {
+                                let currentPos = IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY)
+                                let finalPos = CGPoint(x: currentPos.x + value.translation.width, y: currentPos.y + value.translation.height)
+                                
+                                // 转换回网格坐标
+                                let (newX, newY) = IsoGridConfig.toGrid(screenX: finalPos.x, screenY: finalPos.y)
+                                
+                                // 边界检查 (0...7)
+                                let clampedX = max(0, min(IsoGridConfig.gridSize - 1, newX))
+                                let clampedY = max(0, min(IsoGridConfig.gridSize - 1, newY))
+                                
+                                // 更新位置
+                                withAnimation {
+                                    container.gridX = clampedX
+                                    container.gridY = clampedY
+                                }
                             }
                             
                             // 重置拖拽状态
                             draggingContainer = nil
                             dragOffset = .zero
-                        } : nil
+                        }
                 )
+            } else {
+                view
+            }
         }
     }
     
@@ -494,8 +556,13 @@ struct FurnitureView: View {
                             .offset(y: config.offsetY)
                             // 确保图片可以超出锚点范围显示
                             .fixedSize() 
-                            // 选中高亮效果：直接应用在图片上
-                            .shadow(color: isSelected ? .yellow : .clear, radius: isSelected ? 4 : 0)
+                            // 选中高亮效果：使用多重阴影模拟描边，紧贴图片轮廓
+                            .shadow(color: isSelected ? .yellow : .clear, radius: 0, x: 1, y: 1)
+                            .shadow(color: isSelected ? .yellow : .clear, radius: 0, x: -1, y: -1)
+                            .shadow(color: isSelected ? .yellow : .clear, radius: 0, x: 1, y: -1)
+                            .shadow(color: isSelected ? .yellow : .clear, radius: 0, x: -1, y: 1)
+                            // 再叠加一层模糊阴影增加发光感
+                            .shadow(color: isSelected ? .yellow.opacity(0.5) : .clear, radius: 4, x: 0, y: 0)
                             .overlay {
                                 if isSelected {
                                     // 叠加一个微弱的黄色光晕，增强可见性
