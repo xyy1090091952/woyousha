@@ -18,10 +18,7 @@ class DoubaoService {
     // 请前往火山引擎控制台获取: https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint
     // 从 Info.plist 读取 API Key，避免硬编码
     private var apiKey: String {
-        guard let key = Bundle.main.object(forInfoDictionaryKey: "DOUBAO_API_KEY") as? String, !key.isEmpty else {
-            fatalError("DOUBAO_API_KEY未配置，请在Info.plist中设置")
-        }
-        return key
+        return Bundle.main.object(forInfoDictionaryKey: "DOUBAO_API_KEY") as? String ?? ""
     }
     // 从截图代码示例中提取的模型 ID
     private let modelEndpointId = "doubao-seed-1-8-251228" 
@@ -42,10 +39,17 @@ class DoubaoService {
         case invalidResponse
         case apiError(String)
         case decodingError
+        case missingApiKey // 新增：API Key 缺失错误
     }
     
     // 分析图片
     func analyzeImage(image: UIImage) async throws -> AnalysisResult {
+        // 0. 检查 API Key
+        guard !apiKey.isEmpty else {
+            print("❌ 错误：DOUBAO_API_KEY 未配置")
+            throw AnalysisError.missingApiKey
+        }
+        
         // 1. 图片转 Base64
         // 压缩图片以减少网络传输，宽高限制在 512px 左右通常足够识别
         guard let resizedImage = image.resized(to: 512),
