@@ -61,6 +61,12 @@ struct HomeDecorationView: View {
     // 编辑模式状态
     @State private var isEditing = false
     
+    // 初始化时允许设置是否直接进入编辑模式
+    init(isPreviewMode: Bool = false, isEditing: Bool = false) {
+        self.isPreviewMode = isPreviewMode
+        _isEditing = State(initialValue: isEditing)
+    }
+    
     // 接收外部传入的编辑状态绑定 (可选)
     // 如果作为独立页面，使用内部 isEditing
     // 如果作为组件嵌入，可以通过 Binding 控制（这里简化处理，组件嵌入时默认不可编辑，点击按钮跳转到全屏编辑）
@@ -77,6 +83,10 @@ struct HomeDecorationView: View {
             // Isometric 画布
             GeometryReader { geo in
                 ZStack {
+                    // 0. 绘制背景层 (地面 + 墙壁)
+                    // 需要在网格层之前绘制
+                    roomStructureLayer
+                    
                     // 1. 绘制网格地板
                     gridLayer
                     
@@ -84,14 +94,16 @@ struct HomeDecorationView: View {
                     furnitureLayer
                     
                     // 3. 绘制正在拖拽的家具 (幽灵图)
-                    if draggingContainer != nil {
-                        // 计算当前拖拽位置对应的网格坐标
-                        // 这里需要把全局拖拽坐标转换为相对于画布的坐标
-                        // 暂时简化处理，直接显示跟随手指
+                    if let container = draggingContainer {
+                        let originalPos = IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY)
+                        FurnitureView(container: container)
+                            .position(x: originalPos.x + dragOffset.width, y: originalPos.y + dragOffset.height)
+                            .zIndex(100) // 确保拖拽时在最上层
                     }
                 }
                 // 初始位置调整：预览模式下可能需要不同的初始偏移
-                .offset(x: geo.size.width / 2 + offset.width, y: geo.size.height / (isPreviewMode ? 3 : 4) + offset.height)
+                // 预览模式下，为了避免顶部被切割，将中心点下移 (height / 2.5) - 稍微向上移动一点，避免底部被遮挡
+                .offset(x: geo.size.width / 2 + offset.width, y: geo.size.height / (isPreviewMode ? 2.5 : 4) + offset.height)
                 .scaleEffect(scale)
                 .gesture(
                     // 预览模式下可能禁用手势，或者允许简单的查看
@@ -137,8 +149,14 @@ struct HomeDecorationView: View {
             if !isPreviewMode {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(isEditing ? "完成" : "装修") {
-                        withAnimation {
-                            isEditing.toggle()
+                        if isEditing {
+                            // 如果是完成装修，直接关闭页面
+                            dismiss()
+                        } else {
+                            // 如果是进入装修 (目前应该不会用到，因为进来就是装修模式)
+                            withAnimation {
+                                isEditing.toggle()
+                            }
                         }
                     }
                 }
@@ -147,9 +165,62 @@ struct HomeDecorationView: View {
         .onAppear {
             // 预览模式下默认缩放小一点？或者自动适应
             if isPreviewMode {
-                scale = 0.8
-                lastScale = 0.8
+                scale = 0.7 // 稍微再缩小一点，以适应墙壁高度
+                lastScale = 0.7
             }
+        }
+    }
+    
+    // 房间结构层 (墙壁 + 地面)
+    var roomStructureLayer: some View {
+        ZStack {
+            // 1. 地面 (Floor)
+            // 菱形区域，连接四个角
+            Path { path in
+                let top = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                let right = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                let bottom = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: IsoGridConfig.gridSize)
+                let left = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                
+                path.move(to: top)
+                path.addLine(to: right)
+                path.addLine(to: bottom)
+                path.addLine(to: left)
+                path.closeSubpath()
+            }
+            .fill(Color(hex: "E0E0E0")) // 浅灰色地面
+            
+            // 2. 左后墙 (Left Wall) - 对应 gridY 轴方向 (0,0) -> (0,8)
+            // 在屏幕上是从 Top 点向左下延伸的边
+            Path { path in
+                let wallHeight: CGFloat = 200 // 墙壁高度
+                
+                let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0) // Top Corner (Far)
+                let p2 = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize) // Left Corner
+                
+                path.move(to: p1)
+                path.addLine(to: p2)
+                path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
+                path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                path.closeSubpath()
+            }
+            .fill(Color(hex: "D0D0D0")) // 稍微深一点的灰色
+            
+            // 3. 右后墙 (Right Wall) - 对应 gridX 轴方向 (0,0) -> (8,0)
+            // 在屏幕上是从 Top 点向右下延伸的边
+            Path { path in
+                let wallHeight: CGFloat = 200
+                
+                let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0) // Top Corner (Far)
+                let p2 = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0) // Right Corner
+                
+                path.move(to: p1)
+                path.addLine(to: p2)
+                path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
+                path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                path.closeSubpath()
+            }
+            .fill(Color(hex: "C0C0C0")) // 再深一点的灰色，区分光影
         }
     }
     
@@ -181,6 +252,7 @@ struct HomeDecorationView: View {
     var furnitureLayer: some View {
         ForEach(containers.filter { $0.isPlaced }) { container in
             FurnitureView(container: container)
+                .opacity(draggingContainer?.id == container.id ? 0 : 1) // 拖拽时隐藏原位置家具
                 .position(IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY))
                 .zIndex(Double(container.gridX + container.gridY)) // 简单的深度排序
                 .onTapGesture {
@@ -192,6 +264,40 @@ struct HomeDecorationView: View {
                         }
                     }
                 }
+                // 添加拖拽手势
+                .gesture(
+                    isEditing ? DragGesture()
+                        .onChanged { value in
+                            // 开始拖拽或更新拖拽位置
+                            if draggingContainer == nil {
+                                draggingContainer = container
+                            }
+                            // 更新偏移量
+                            dragOffset = value.translation
+                        }
+                        .onEnded { value in
+                            // 拖拽结束，计算新位置
+                            let currentPos = IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY)
+                            let finalPos = CGPoint(x: currentPos.x + value.translation.width, y: currentPos.y + value.translation.height)
+                            
+                            // 转换回网格坐标
+                            let (newX, newY) = IsoGridConfig.toGrid(screenX: finalPos.x, screenY: finalPos.y)
+                            
+                            // 边界检查 (0...7)
+                            let clampedX = max(0, min(IsoGridConfig.gridSize - 1, newX))
+                            let clampedY = max(0, min(IsoGridConfig.gridSize - 1, newY))
+                            
+                            // 更新位置
+                            withAnimation {
+                                container.gridX = clampedX
+                                container.gridY = clampedY
+                            }
+                            
+                            // 重置拖拽状态
+                            draggingContainer = nil
+                            dragOffset = .zero
+                        } : nil
+                )
         }
     }
     
@@ -278,13 +384,13 @@ struct FurnitureView: View {
                     .resizable()
                     .scaledToFit()
                     // 动态计算宽度：基于网格宽度
-                    // 假设图片是按照标准比例制作的，我们主要控制底座宽度匹配网格
-                    // 网格总宽度 = (gridX + gridY) * tileWidth? 不对，是投影宽度
-                    // 简单起见，我们设定 1x1 的家具图片宽度约为 tileWidth * 1.5 (考虑高度)
-                    // 更好的方式是直接指定 frame width
-                    .frame(width: IsoGridConfig.tileWidth * CGFloat(max(config.width, config.depth)) * 1.5)
-                    // 调整垂直偏移，让底座对齐网格中心
-                    .offset(y: -IsoGridConfig.tileHeight * 0.8)
+                    // 使用新的 scale 参数，移除硬编码的 1.5 倍率
+                    .frame(width: IsoGridConfig.tileWidth * CGFloat(max(config.width, config.depth)) * config.scale)
+                    // 调整垂直偏移，让底座对齐网格中心，并叠加配置的微调
+                    // 原来的逻辑是 -IsoGridConfig.tileHeight * 0.8，现在可以更精确控制
+                    // 通常我们需要让图片的“底面中心”对齐 (0,0)
+                    // 假设图片底部是底面。
+                    .offset(y: -IsoGridConfig.tileHeight * 0.5 + config.offsetY)
             } else {
                 // 降级渲染：原来的蓝盒子
                 fallbackView

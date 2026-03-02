@@ -134,30 +134,8 @@ struct ContentView: View {
                 // 使用 HomeDecorationView 作为背景预览
                 // 开启 isPreviewMode，隐藏导航栏和底部抽屉
                 HomeDecorationView(isPreviewMode: true)
-                    .frame(height: 300) // 增加高度以展示更多内容
-                    .mask(
-                        LinearGradient(
-                            gradient: Gradient(colors: [.black, .black.opacity(0.9), .black.opacity(0.1)]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                
-                // 覆盖层提示 (仅在空状态或引导时显示，或者作为标题)
-                VStack {
-                    HStack {
-                        Image(systemName: "house.fill")
-                        Text("我的家")
-                            .fontWeight(.bold)
-                        Spacer()
-                    }
-                    .font(.title2)
-                    .foregroundStyle(.primary.opacity(0.8))
-                    .padding(.horizontal, 20)
-                    .padding(.top, 60) // 避开顶部按钮
-                    
-                    Spacer()
-                }
+                    .frame(height: 380) // 增加高度以展示更多内容，避免顶部切割
+                    .clipped() // 裁剪超出部分，防止遮挡下方内容
             }
             .background(Color.blue.opacity(0.05))
             .onTapGesture {
@@ -228,14 +206,8 @@ struct ContentView: View {
         // 全屏装修模式
         .fullScreenCover(isPresented: $showDecorationSheet) {
             NavigationStack {
-                // 这里我们希望直接进入编辑模式，所以需要在 HomeDecorationView 中暴露 isEditing 的初始状态
-                // 但目前的 State 是私有的。
-                // 简单方案：进入后手动点击装修？
-                // 更好方案：给 HomeDecorationView 加一个 init 参数
-                // 临时方案：进入页面后用户手动点一下装修，或者我们在 HomeDecorationView 加上 onAppear 逻辑
-                // 既然用户点击的是“装修”按钮，进去后应该直接是编辑状态。
-                // 我们修改一下 HomeDecorationView 让它支持外部传入初始状态
-                HomeDecorationView()
+                // 直接进入编辑模式
+                HomeDecorationView(isPreviewMode: false, isEditing: true)
             }
         }
     }

@@ -215,7 +215,7 @@ struct ContainerEditView: View {
                 container.gridDepth = config.depth
             }
         } else {
-            var newContainer = Container(name: name, icon: icon)
+            let newContainer = Container(name: name, icon: icon)
             newContainer.furnitureImageName = selectedFurnitureImage
             
             // 如果选择了家具造型，自动更新占地大小
