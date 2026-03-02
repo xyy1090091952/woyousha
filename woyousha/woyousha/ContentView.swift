@@ -345,7 +345,7 @@ struct ContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .background(Color.white)
+        .background(Color.white) // 仅保留纯白背景，移除点阵以避免视觉冲突
         .scrollClipDisabled()
     }
     
@@ -612,7 +612,12 @@ struct ContentView: View {
                 )
             }
         }
-        .background(Color.white) // 确保网格区域也是白色背景
+        .background(
+            ZStack {
+                Color.white
+                DotGridBackground(spacing: 20, dotColor: .gray.opacity(0.3))
+            }
+        )
         // 拖拽时禁用滚动，防止列表滑动到最底部
         .scrollDisabled(!draggingItems.isEmpty)
         // 关键：通过监听拖拽手势来主动阻止 ScrollView 的滚动事件
