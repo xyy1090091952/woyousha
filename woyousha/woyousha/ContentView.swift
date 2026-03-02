@@ -49,6 +49,21 @@ struct ContentView: View {
     // 垃圾桶区域是否处于高亮状态（准备删除）
     @State private var isTrashBinActive = false
     
+    // 状态更新标志位，防止循环触发
+    @State private var isUpdatingFromFilter = false
+    @State private var isUpdatingFromContainerID = false
+    
+    // 面板高度调整状态
+    enum PanelPosition: CGFloat, CaseIterable {
+        case low = 0.2    // 底部（家很大，列表很小）
+        case middle = 0.5 // 中间（平衡）
+        case high = 0.8   // 顶部（列表全屏，家几乎看不见）
+    }
+    
+    @State private var panelPosition: PanelPosition = .middle
+    @State private var panelOffset: CGFloat = 0
+    @State private var lastPanelOffset: CGFloat = 0
+    
     // 垃圾桶的高度阈值（屏幕底部多少像素算作垃圾桶区域）
     private let trashBinHeight: CGFloat = 120
     
@@ -69,19 +84,92 @@ struct ContentView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack {
-                // 背景
-                DotGridBackground(spacing: 20, dotColor: .gray.opacity(0.3))
+            GeometryReader { geo in
+                let screenHeight = geo.size.height
+                let safeAreaTop = geo.safeAreaInsets.top
                 
-                VStack(spacing: 0) {
-                    // 1. 顶部区域：家/房间视图 + 编辑按钮
-                    homeHeaderView
+                // 计算面板的最小和最大 Y 坐标
+                // low (底部) -> y 值大
+                // high (顶部) -> y 值小
+                let minY = safeAreaTop + 60 // 留出一点顶部空间给按钮
+                let maxY = screenHeight - 150 // 留出一点底部空间给列表头部
+                
+                // 计算当前面板的目标 Y 坐标
+                let targetY: CGFloat = {
+                    switch panelPosition {
+                    case .high: return minY
+                    case .middle: return screenHeight * 0.5
+                    case .low: return maxY
+                    }
+                }()
+                
+                ZStack(alignment: .top) {
+                    // 1. 底层：家/房间视图 (全屏背景)
+                    // 需要根据面板位置调整内容的中心点
+                    // 可见区域高度 = 当前面板的 Y 坐标
+                    let visibleHeight = targetY + panelOffset
                     
-                    // 2. 容器选择列表
-                    containerListView
+                    HomeDecorationView(
+                        isPreviewMode: true, 
+                        selectedContainerID: $selectedContainerID,
+                        visibleHeight: visibleHeight // 传入可见高度以调整中心点
+                    )
+                    .frame(width: geo.size.width, height: screenHeight)
+                    .ignoresSafeArea()
                     
-                    // 3. 物品网格
-                    itemsGridView
+                    // 顶部按钮栏 (始终显示在最上层)
+                    topToolbar
+                        .zIndex(1)
+                    
+                    // 2. 上层：可拖拽的容器列表面板
+                    VStack(spacing: 0) {
+                        // 拖拽手柄区域
+                        Capsule()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 40, height: 5)
+                            .padding(.top, 12)
+                            .padding(.bottom, 12)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.white)
+                            .gesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        panelOffset = value.translation.height
+                                    }
+                                    .onEnded { value in
+                                        // 计算最终位置并吸附
+                                        let currentY = targetY + value.translation.height
+                                        let predictedY = currentY + value.velocity.height * 0.2
+                                        
+                                        // 寻找最近的吸附点
+                                        let snapPoints: [(PanelPosition, CGFloat)] = [
+                                            (.high, minY),
+                                            (.middle, screenHeight * 0.5),
+                                            (.low, maxY)
+                                        ]
+                                        
+                                        if let closest = snapPoints.min(by: { abs($0.1 - predictedY) < abs($1.1 - predictedY) }) {
+                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                                panelPosition = closest.0
+                                                panelOffset = 0
+                                            }
+                                        }
+                                    }
+                            )
+                        
+                        // 容器选择列表
+                        containerListView
+                        
+                        // 物品网格
+                        itemsGridView
+                    }
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.1), radius: 10, y: -5)
+                    // 设置面板位置
+                    .offset(y: targetY + panelOffset)
+                    // 确保面板延伸到底部安全区域以下
+                    .frame(height: screenHeight) // 面板高度至少为屏幕高度，保证拖拽到底部时内容不被截断
                 }
             }
             .navigationBarHidden(true) // 隐藏默认导航栏，使用自定义头部
@@ -108,6 +196,12 @@ struct ContentView: View {
                 }
             }
             .onChange(of: selectedFilter) { oldFilter, newValue in
+                // 防止循环触发
+                guard !isUpdatingFromContainerID else { return }
+                
+                isUpdatingFromFilter = true
+                defer { isUpdatingFromFilter = false }
+                
                 // 反向联动：当用户在列表点击容器时，更新 selectedContainerID 以高亮家具
                 if case .specific(let container) = newValue {
                     withAnimation {
@@ -126,6 +220,12 @@ struct ContentView: View {
                 }
             }
             .onChange(of: selectedContainerID) { _, newValue in
+                // 防止循环触发
+                guard !isUpdatingFromFilter else { return }
+                
+                isUpdatingFromContainerID = true
+                defer { isUpdatingFromContainerID = false }
+                
                 // 仅当 selectedContainerID 变为 nil 时，需要判断是否是被动变动
                 // 如果是从 specific -> unclassified 过程中，selectedContainerID 会被置空
                 // 此时不应该触发 selectedFilter = .all
@@ -171,96 +271,67 @@ struct ContentView: View {
     
     // MARK: - Views
     
-    private var homeHeaderView: some View {
-        ZStack(alignment: .top) {
-            // 家的模拟图 (占位)
-            // 使用 Color 作为背景，并让它忽略安全区域
-            // 内容（图标和文字）单独放置，保持在安全区域内
-            
-            // 1. 内容层：改为 HomeDecorationView 的入口
-            // 直接展示 HomeDecorationView (预览模式)
-            ZStack {
-                // 使用 HomeDecorationView 作为背景预览
-                // 开启 isPreviewMode，隐藏导航栏和底部抽屉
-                // 传递 selectedContainerID 绑定
-                HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
-                    .frame(height: 420) // 增加高度以展示更多内容，并覆盖顶部安全区域
-            }
-            // .background(Color.blue.opacity(0.05)) // 移除浅蓝色背景
-            .ignoresSafeArea(edges: .top) // 忽略顶部安全区域，让背景通顶
-            .onTapGesture {
-                // 点击整个区域也可以进入装修模式？或者只是预览交互
-                // 用户说“在首页预览的页面不应该看得到所谓的仓库，应该就是个纯预览”
-                // “在用户点击「装修」（也就是修改布置）的时候，再进入修改页面”
-                // 所以这里应该允许简单的拖拽查看（已在 HomeDecorationView 支持），但不允许编辑
-            }
-            
-            // 顶部按钮栏
-            HStack {
-                // 添加物品按钮 (左侧)
-                if !isEditing {
-                    Button(action: { showAddSheet = true }) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.8))
-                            .clipShape(Capsule())
-                            .shadow(radius: 2)
-                    }
-                    .transition(.opacity)
-                }
-                
-                Spacer()
-                
-                // 装修按钮 (右侧，新增)
-                Button(action: {
-                    showDecorationSheet = true
-                }) {
-                    Label("装修", systemImage: "hammer.fill")
-                        .font(.subheadline)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.9))
-                        .clipShape(Capsule())
-                        .shadow(radius: 2)
-                        .foregroundStyle(.purple)
-                }
-                .padding(.trailing, 8)
-                
-                // 物品列表编辑按钮 (右侧)
-                Button(action: {
-                    withAnimation {
-                        isEditing.toggle()
-                        selectedItems.removeAll()
-                    }
-                }) {
-                    Text(isEditing ? "完成" : "编辑列表")
-                        .font(.subheadline)
-                        .padding(.horizontal, 12)
+    // 顶部工具栏 (替代原有的 header 按钮)
+    private var topToolbar: some View {
+        HStack {
+            // 添加物品按钮 (左侧)
+            if !isEditing {
+                Button(action: { showAddSheet = true }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(Color.white.opacity(0.8))
                         .clipShape(Capsule())
                         .shadow(radius: 2)
                 }
+                .transition(.opacity)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16) // 恢复正常的顶部间距
-        }
-        // 2. 背景层：单独设置背景色并延伸到安全区域
-        .background(
-            Color.gray.opacity(0.1)
-                .ignoresSafeArea(edges: .top)
-        )
-        // 全屏装修模式
-        .fullScreenCover(isPresented: $showDecorationSheet) {
-            NavigationStack {
-                // 直接进入编辑模式
-                HomeDecorationView(isPreviewMode: false, isEditing: true)
+            
+            Spacer()
+            
+            // 装修按钮 (右侧，新增)
+            Button(action: {
+                showDecorationSheet = true
+            }) {
+                Label("装修", systemImage: "hammer.fill")
+                    .font(.subheadline)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.9))
+                    .clipShape(Capsule())
+                    .shadow(radius: 2)
+                    .foregroundStyle(.purple)
+            }
+            .padding(.trailing, 8)
+            
+            // 物品列表编辑按钮 (右侧)
+            Button(action: {
+                withAnimation {
+                    isEditing.toggle()
+                    selectedItems.removeAll()
+                }
+            }) {
+                Text(isEditing ? "完成" : "编辑列表")
+                    .font(.subheadline)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.8))
+                    .clipShape(Capsule())
+                    .shadow(radius: 2)
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 16) // 这里的 top 需要适配 safeArea，外层已经是 ZStack top alignment
+        .frame(maxHeight: .infinity, alignment: .top) // 确保固定在顶部
     }
+    
+    // 已废弃，功能合并到主视图和 topToolbar
+    // private var homeHeaderView: some View { ... }
+    
+    // 全屏装修模式 (保持不变，只是入口变了)
+    // .fullScreenCover(isPresented: $showDecorationSheet) ...
     
     private var containerListView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
