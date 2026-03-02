@@ -17,6 +17,7 @@ struct ContainerEditView: View {
     
     @State private var name: String = ""
     @State private var icon: String = "cube.box"
+    @State private var selectedFurnitureImage: String? = nil
     @State private var showDeleteConfirmation = false
     
     // 预设的一些可爱家具图标
@@ -57,13 +58,70 @@ struct ContainerEditView: View {
                     .padding(.vertical, 8)
                 }
                 
+                Section("选择家园中的造型") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 16) {
+                            // 默认（无特殊造型）
+                            VStack {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(selectedFurnitureImage == nil ? Color.blue : Color.gray.opacity(0.1))
+                                        .frame(width: 80, height: 80)
+                                    
+                                    Image(systemName: "cube.box")
+                                        .font(.largeTitle)
+                                        .foregroundStyle(selectedFurnitureImage == nil ? .white : .gray)
+                                }
+                                Text("默认")
+                                    .font(.caption)
+                            }
+                            .onTapGesture {
+                                withAnimation {
+                                    selectedFurnitureImage = nil
+                                }
+                            }
+                            
+                            // 预设家具列表
+                            ForEach(FurnitureConfig.all, id: \.name) { config in
+                                VStack {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(selectedFurnitureImage == config.imageName ? Color.blue : Color.gray.opacity(0.1))
+                                            .frame(width: 80, height: 80)
+                                        
+                                        Image(config.imageName)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 60, height: 60)
+                                    }
+                                    Text(config.name)
+                                        .font(.caption)
+                                }
+                                .onTapGesture {
+                                    withAnimation {
+                                        selectedFurnitureImage = config.imageName
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+                
                 Section {
                     HStack {
                         Spacer()
                         VStack(spacing: 10) {
-                            Image(systemName: icon)
-                                .font(.system(size: 60))
-                                .foregroundStyle(.blue)
+                            if let furnitureImage = selectedFurnitureImage {
+                                Image(furnitureImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(height: 100)
+                            } else {
+                                Image(systemName: icon)
+                                    .font(.system(size: 60))
+                                    .foregroundStyle(.blue)
+                            }
                             Text(name.isEmpty ? "预览" : name)
                                 .font(.headline)
                         }
@@ -111,6 +169,7 @@ struct ContainerEditView: View {
                 if let container = containerToEdit {
                     name = container.name
                     icon = container.icon
+                    selectedFurnitureImage = container.furnitureImageName
                 }
             }
             .alert("删除容器", isPresented: $showDeleteConfirmation) {
@@ -146,9 +205,26 @@ struct ContainerEditView: View {
         if let container = containerToEdit {
             container.name = name
             container.icon = icon
+            container.furnitureImageName = selectedFurnitureImage
             container.updatedDate = Date()
+            
+            // 如果选择了家具造型，自动更新占地大小
+            if let imageName = selectedFurnitureImage,
+               let config = FurnitureConfig.get(byImageName: imageName) {
+                container.gridWidth = config.width
+                container.gridDepth = config.depth
+            }
         } else {
-            let newContainer = Container(name: name, icon: icon)
+            var newContainer = Container(name: name, icon: icon)
+            newContainer.furnitureImageName = selectedFurnitureImage
+            
+            // 如果选择了家具造型，自动更新占地大小
+            if let imageName = selectedFurnitureImage,
+               let config = FurnitureConfig.get(byImageName: imageName) {
+                newContainer.gridWidth = config.width
+                newContainer.gridDepth = config.depth
+            }
+            
             modelContext.insert(newContainer)
         }
         

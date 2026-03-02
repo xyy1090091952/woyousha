@@ -117,6 +117,9 @@ struct ContentView: View {
         }
     }
     
+    // 装修模式的全屏覆盖
+    @State private var showDecorationSheet = false
+    
     // MARK: - Views
     
     private var homeHeaderView: some View {
@@ -125,23 +128,48 @@ struct ContentView: View {
             // 使用 Color 作为背景，并让它忽略安全区域
             // 内容（图标和文字）单独放置，保持在安全区域内
             
-            // 1. 内容层
-            Rectangle()
-                .fill(Color.clear) // 透明，只用于占位和布局
-                .frame(height: 200)
-                .overlay {
-                    Image(systemName: "house.fill")
-                        .font(.system(size: 60))
-                        .foregroundStyle(.gray.opacity(0.3))
-                    Text("我的家")
-                        .font(.headline)
-                        .foregroundStyle(.gray)
-                        .offset(y: 40)
+            // 1. 内容层：改为 HomeDecorationView 的入口
+            // 直接展示 HomeDecorationView (预览模式)
+            ZStack {
+                // 使用 HomeDecorationView 作为背景预览
+                // 开启 isPreviewMode，隐藏导航栏和底部抽屉
+                HomeDecorationView(isPreviewMode: true)
+                    .frame(height: 300) // 增加高度以展示更多内容
+                    .mask(
+                        LinearGradient(
+                            gradient: Gradient(colors: [.black, .black.opacity(0.9), .black.opacity(0.1)]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                
+                // 覆盖层提示 (仅在空状态或引导时显示，或者作为标题)
+                VStack {
+                    HStack {
+                        Image(systemName: "house.fill")
+                        Text("我的家")
+                            .fontWeight(.bold)
+                        Spacer()
+                    }
+                    .font(.title2)
+                    .foregroundStyle(.primary.opacity(0.8))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 60) // 避开顶部按钮
+                    
+                    Spacer()
                 }
+            }
+            .background(Color.blue.opacity(0.05))
+            .onTapGesture {
+                // 点击整个区域也可以进入装修模式？或者只是预览交互
+                // 用户说“在首页预览的页面不应该看得到所谓的仓库，应该就是个纯预览”
+                // “在用户点击「装修」（也就是修改布置）的时候，再进入修改页面”
+                // 所以这里应该允许简单的拖拽查看（已在 HomeDecorationView 支持），但不允许编辑
+            }
             
             // 顶部按钮栏
             HStack {
-                // 添加按钮 (左侧)
+                // 添加物品按钮 (左侧)
                 if !isEditing {
                     Button(action: { showAddSheet = true }) {
                         Image(systemName: "plus")
@@ -158,16 +186,31 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                // 编辑按钮 (右侧)
+                // 装修按钮 (右侧，新增)
+                Button(action: {
+                    showDecorationSheet = true
+                }) {
+                    Label("装修", systemImage: "hammer.fill")
+                        .font(.subheadline)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.9))
+                        .clipShape(Capsule())
+                        .shadow(radius: 2)
+                        .foregroundStyle(.purple)
+                }
+                .padding(.trailing, 8)
+                
+                // 物品列表编辑按钮 (右侧)
                 Button(action: {
                     withAnimation {
                         isEditing.toggle()
                         selectedItems.removeAll()
                     }
                 }) {
-                    Text(isEditing ? "完成" : "编辑")
+                    Text(isEditing ? "完成" : "编辑列表")
                         .font(.subheadline)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(Color.white.opacity(0.8))
                         .clipShape(Capsule())
@@ -182,6 +225,19 @@ struct ContentView: View {
             Color.gray.opacity(0.1)
                 .ignoresSafeArea(edges: .top)
         )
+        // 全屏装修模式
+        .fullScreenCover(isPresented: $showDecorationSheet) {
+            NavigationStack {
+                // 这里我们希望直接进入编辑模式，所以需要在 HomeDecorationView 中暴露 isEditing 的初始状态
+                // 但目前的 State 是私有的。
+                // 简单方案：进入后手动点击装修？
+                // 更好方案：给 HomeDecorationView 加一个 init 参数
+                // 临时方案：进入页面后用户手动点一下装修，或者我们在 HomeDecorationView 加上 onAppear 逻辑
+                // 既然用户点击的是“装修”按钮，进去后应该直接是编辑状态。
+                // 我们修改一下 HomeDecorationView 让它支持外部传入初始状态
+                HomeDecorationView()
+            }
+        }
     }
     
     private var containerListView: some View {
