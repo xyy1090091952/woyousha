@@ -18,7 +18,10 @@ class DoubaoService {
     // 请前往火山引擎控制台获取: https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint
     // 从 Info.plist 读取 API Key，避免硬编码
     private var apiKey: String {
-        return Bundle.main.object(forInfoDictionaryKey: "DOUBAO_API_KEY") as? String ?? ""
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "DOUBAO_API_KEY") as? String, !key.isEmpty else {
+            fatalError("DOUBAO_API_KEY未配置，请在Info.plist中设置")
+        }
+        return key
     }
     // 从截图代码示例中提取的模型 ID
     private let modelEndpointId = "doubao-seed-1-8-251228" 

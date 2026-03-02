@@ -215,7 +215,8 @@ struct AddItemView: View {
                     Button("保存") {
                         saveItem()
                     }
-                    .disabled(isProcessingImage)
+                    // 禁用条件：正在处理图片，或者没有选择图片（selectedImage 为空）
+                    .disabled(isProcessingImage || selectedImage == nil)
                 }
             }
             .sheet(isPresented: $isCameraPresented) {
