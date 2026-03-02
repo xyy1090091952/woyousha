@@ -189,18 +189,99 @@ struct HomeDecorationView: View {
     // 房间结构层 (墙壁 + 地面)
     var roomStructureLayer: some View {
         ZStack {
-            // 1. 地面 (Floor)
-            // 修复平铺问题：
-            // 1. 先用 Rectangle 填充 ImagePaint (这会产生平铺纹理)
-            // 2. 对 Rectangle 进行 3D 变换
-            // 3. 最后用 mask 裁剪
+            // 定义厚度常量
+            let floorThickness: CGFloat = 20
+            let wallThickness: CGFloat = 10
+            let textureScale: CGFloat = 0.5
+            
+            // --- 全局纹理对齐策略 ---
+            // 所有面都使用同一个巨大的矩形，定位于世界原点 (Grid 0,0)
+            // 这样所有面的纹理原点 (Texture Origin) 都会在空间中对齐
+            // 侧面通过 scaleEffect(0.707) 来补偿等轴测投影带来的拉伸
+            let anchorPoint = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+            // 增大画布尺寸以避免边缘被切断 (1200 -> 2000)
+            // 之前的 1200 可能在旋转/斜切变换后不足以覆盖角落，导致出现灰色（背景色）或截断
+            let largeSize: CGFloat = 2000 
+            
+            // --- 0. 地面底座 (Floor Base) ---
+            
+            // 左下侧面 (Left Face) - 对应 gridY max 边缘
+            // 这是一个垂直面，朝向西南 (与 Right Wall B 平行)
+            // 变换矩阵：CGAffineTransform(a: 1, b: 0.5, c: 0, d: 1, tx: 0, ty: 0) (斜率 0.5)
             Rectangle()
-                .fill(ImagePaint(image: Image(floorTexture), scale: 0.5))
-                .frame(width: 1000, height: 1000) // 足够大的画布以容纳旋转后的内容
+                .fill(ImagePaint(image: Image(floorTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
+                .projectionEffect(.init(CGAffineTransform(a: 1, b: 0.5, c: 0, d: 1, tx: 0, ty: 0)))
+                .scaleEffect(x: 0.707, y: 0.707) // 补偿投影拉伸 (1/sqrt(2))
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
+                .mask(
+                    Path { path in
+                        let left = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                        let bottom = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: IsoGridConfig.gridSize)
+                        
+                        path.move(to: left)
+                        path.addLine(to: bottom)
+                        path.addLine(to: CGPoint(x: bottom.x, y: bottom.y + floorThickness))
+                        path.addLine(to: CGPoint(x: left.x, y: left.y + floorThickness))
+                        path.closeSubpath()
+                    }
+                )
+                .overlay(
+                    Path { path in
+                        let left = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                        let bottom = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: IsoGridConfig.gridSize)
+                        
+                        path.move(to: left)
+                        path.addLine(to: bottom)
+                        path.addLine(to: CGPoint(x: bottom.x, y: bottom.y + floorThickness))
+                        path.addLine(to: CGPoint(x: left.x, y: left.y + floorThickness))
+                        path.closeSubpath()
+                    }
+                    .fill(Color.black.opacity(0.3)) // 阴影
+                )
+            
+            // 右下侧面 (Right Face) - 对应 gridX max 边缘
+            // 这是一个垂直面，朝向东南 (与 Left Wall A 平行)
+            // 变换矩阵：CGAffineTransform(a: 1, b: -0.5, c: 0, d: 1, tx: 0, ty: 0) (斜率 -0.5)
+            Rectangle()
+                .fill(ImagePaint(image: Image(floorTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
+                .projectionEffect(.init(CGAffineTransform(a: 1, b: -0.5, c: 0, d: 1, tx: 0, ty: 0)))
+                .scaleEffect(x: 0.707, y: 0.707) // 补偿投影拉伸
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
+                .mask(
+                    Path { path in
+                        let right = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                        let bottom = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: IsoGridConfig.gridSize)
+                        
+                        path.move(to: bottom)
+                        path.addLine(to: right)
+                        path.addLine(to: CGPoint(x: right.x, y: right.y + floorThickness))
+                        path.addLine(to: CGPoint(x: bottom.x, y: bottom.y + floorThickness))
+                        path.closeSubpath()
+                    }
+                )
+                .overlay(
+                    Path { path in
+                        let right = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                        let bottom = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: IsoGridConfig.gridSize)
+                        
+                        path.move(to: bottom)
+                        path.addLine(to: right)
+                        path.addLine(to: CGPoint(x: right.x, y: right.y + floorThickness))
+                        path.addLine(to: CGPoint(x: bottom.x, y: bottom.y + floorThickness))
+                        path.closeSubpath()
+                    }
+                    .fill(Color.black.opacity(0.4)) // 更深的阴影
+                )
+            
+            // --- 1. 地面 (Floor) ---
+            Rectangle()
+                .fill(ImagePaint(image: Image(floorTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
                 .rotationEffect(.degrees(45))
                 .scaleEffect(x: 1.0, y: 0.5)
-                .position(x: IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize/2, gridY: IsoGridConfig.gridSize/2).x,
-                          y: IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize/2, gridY: IsoGridConfig.gridSize/2).y)
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
                 .mask(
                     Path { path in
                         let top = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
@@ -216,14 +297,15 @@ struct HomeDecorationView: View {
                     }
                 )
             
-            // 2. 左后墙 (Left Wall) - 对应 gridY 变化，屏幕上向左下延伸
+            // --- 2. 左后墙 (Left Wall) ---
+            // 对应 gridY 轴方向，视觉上向左下延伸
+            // 变换矩阵：CGAffineTransform(a: 1, b: -0.5, c: 0, d: 1, tx: 0, ty: 0)
             Rectangle()
-                .fill(ImagePaint(image: Image(wallTexture), scale: 0.5))
-                .frame(width: 800, height: 800)
-                // 变换矩阵：Left Wall 斜率为 -0.5
+                .fill(ImagePaint(image: Image(wallTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
                 .projectionEffect(.init(CGAffineTransform(a: 1, b: -0.5, c: 0, d: 1, tx: 0, ty: 0)))
-                // 调整位置：左墙中心大概在左侧
-                .position(x: -200, y: 0) 
+                .scaleEffect(x: 0.707, y: 0.707) // 补偿投影拉伸
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
                 .mask(
                     Path { path in
                         let wallHeight: CGFloat = 200
@@ -233,10 +315,14 @@ struct HomeDecorationView: View {
                         path.move(to: p1)
                         path.addLine(to: p2)
                         path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
-                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                        // 稍微延伸一点以覆盖可能的缝隙
+                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight - 2))
                         path.closeSubpath()
                     }
                 )
+                // 移除叠加在墙面上的阴影/高光，因为这可能错误地覆盖了地板
+                // 如果需要阴影，应该确保遮罩范围严格正确，或者直接在材质上处理
+                /*
                 .overlay(
                     Path { path in
                         let wallHeight: CGFloat = 200
@@ -251,15 +337,88 @@ struct HomeDecorationView: View {
                     }
                     .fill(Color.black.opacity(0.1))
                 )
-
+                */
             
-            // 3. 右后墙 (Right Wall) - 对应 gridX 变化，屏幕上向右下延伸
+            // 左墙侧面厚度 (Left Wall Side Thickness)
+            // 垂直切面，朝向东南 (与 Right Wall 和 Floor Left Face 一致)
+            // 变换矩阵：CGAffineTransform(a: 1, b: 0.5, c: 0, d: 1, tx: 0, ty: 0)
             Rectangle()
-                .fill(ImagePaint(image: Image(wallTexture), scale: 0.5))
-                .frame(width: 800, height: 800)
-                // 变换矩阵：Right Wall 斜率为 0.5
+                .fill(ImagePaint(image: Image(wallTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
                 .projectionEffect(.init(CGAffineTransform(a: 1, b: 0.5, c: 0, d: 1, tx: 0, ty: 0)))
-                .position(x: 200, y: 0)
+                .scaleEffect(x: 0.707, y: 0.707) // 补偿投影拉伸
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
+                .mask(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let start = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                        let end = CGPoint(x: start.x, y: start.y - wallHeight)
+                        
+                        path.move(to: start)
+                        path.addLine(to: end)
+                        // 向左平移厚度
+                        path.addLine(to: CGPoint(x: end.x - wallThickness, y: end.y))
+                        path.addLine(to: CGPoint(x: start.x - wallThickness, y: start.y))
+                        path.closeSubpath()
+                    }
+                )
+                // 移除叠加在侧面厚度上的阴影/高光，因为这可能错误地覆盖了地板
+                /*
+                .overlay(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let start = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                        let end = CGPoint(x: start.x, y: start.y - wallHeight)
+                        
+                        path.move(to: start)
+                        path.addLine(to: end)
+                        path.addLine(to: CGPoint(x: end.x - wallThickness, y: end.y))
+                        path.addLine(to: CGPoint(x: start.x - wallThickness, y: start.y))
+                        path.closeSubpath()
+                    }
+                    .fill(Color.black.opacity(0.3))
+                )
+                */
+            
+            // 左墙顶部 (Left Wall Top)
+            // 水平切面，与地板平行
+            // 变换：旋转 -45 + 缩放 Y 0.5 (模拟 D: 地面的镜像/对称面)
+            Rectangle()
+                .fill(ImagePaint(image: Image(wallTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
+                .rotationEffect(.degrees(-45)) // 使用 -45 度以获得镜像效果
+                .scaleEffect(x: 1.0, y: 0.5)
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
+                .mask(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0) // top
+                        let p2 = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize) // left
+                        
+                        let t1 = CGPoint(x: p1.x, y: p1.y - wallHeight)
+                        let t2 = CGPoint(x: p2.x, y: p2.y - wallHeight)
+                        
+                        // 绘制左墙顶部的平行四边形
+                        path.move(to: t2)
+                        path.addLine(to: t1)
+                        path.addLine(to: CGPoint(x: t1.x, y: t1.y - wallThickness)) // 注意：这里的 wallThickness 只是简单的 Y 轴偏移，实际上应该沿 isometric 轴偏移
+                        // 更精确的做法：计算 isometric 下的厚度偏移
+                        // 这里简化处理，假设 wallThickness 在 Y 轴上
+                        path.addLine(to: CGPoint(x: t2.x, y: t2.y - wallThickness))
+                        path.closeSubpath()
+                    }
+                )
+                .overlay(Color.white.opacity(0.1))
+
+            // --- 3. 右后墙 (Right Wall) ---
+            // 对应 gridX 轴方向，视觉上向右下延伸
+            // 变换矩阵：CGAffineTransform(a: 1, b: 0.5, c: 0, d: 1, tx: 0, ty: 0)
+            Rectangle()
+                .fill(ImagePaint(image: Image(wallTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
+                .projectionEffect(.init(CGAffineTransform(a: 1, b: 0.5, c: 0, d: 1, tx: 0, ty: 0)))
+                .scaleEffect(x: 0.707, y: 0.707) // 补偿投影拉伸
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
                 .mask(
                     Path { path in
                         let wallHeight: CGFloat = 200
@@ -269,10 +428,13 @@ struct HomeDecorationView: View {
                         path.move(to: p1)
                         path.addLine(to: p2)
                         path.addLine(to: CGPoint(x: p2.x, y: p2.y - wallHeight))
-                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight))
+                        // 稍微延伸一点
+                        path.addLine(to: CGPoint(x: p1.x, y: p1.y - wallHeight - 2))
                         path.closeSubpath()
                     }
                 )
+                // 移除叠加在墙面上的高光，防止溢出影响地板
+                /*
                 .overlay(
                     Path { path in
                         let wallHeight: CGFloat = 200
@@ -287,6 +449,98 @@ struct HomeDecorationView: View {
                     }
                     .fill(Color.white.opacity(0.05))
                 )
+                */
+            
+            // 右墙侧面厚度 (Right Wall Side Thickness)
+            // 垂直切面，朝向西南 (与 Left Wall 和 Floor Right Face 一致)
+            // 变换矩阵：CGAffineTransform(a: 1, b: -0.5, c: 0, d: 1, tx: 0, ty: 0)
+            Rectangle()
+                .fill(ImagePaint(image: Image(wallTexture), scale: textureScale))
+                .frame(width: largeSize, height: largeSize)
+                .projectionEffect(.init(CGAffineTransform(a: 1, b: -0.5, c: 0, d: 1, tx: 0, ty: 0)))
+                .scaleEffect(x: 0.707, y: 0.707) // 补偿投影拉伸
+                .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
+                .mask(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let start = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                        let end = CGPoint(x: start.x, y: start.y - wallHeight)
+                        
+                        path.move(to: start)
+                        // 向下延伸一点以覆盖底部缺口
+                        path.addLine(to: CGPoint(x: start.x, y: start.y + 2)) 
+                        path.addLine(to: CGPoint(x: start.x + wallThickness, y: start.y + 2))
+                        
+                        // 向上延伸一点以覆盖顶部缺口
+                        path.addLine(to: CGPoint(x: end.x + wallThickness, y: end.y - 2))
+                        path.addLine(to: CGPoint(x: end.x, y: end.y - 2))
+                        path.closeSubpath()
+                    }
+                )
+                // 移除叠加在侧面厚度上的阴影/高光，因为这可能错误地覆盖了地板
+                /*
+                .overlay(
+                    Path { path in
+                        let wallHeight: CGFloat = 200
+                        let start = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                        let end = CGPoint(x: start.x, y: start.y - wallHeight)
+                        
+                        path.move(to: start)
+                        path.addLine(to: end)
+                        path.addLine(to: CGPoint(x: end.x + wallThickness, y: end.y))
+                        path.addLine(to: CGPoint(x: start.x + wallThickness, y: start.y))
+                        path.closeSubpath()
+                    }
+                    .fill(Color.black.opacity(0.3))
+                )
+                */
+            
+            // 右墙顶部 (Right Wall Top)
+            // 水平切面，与地板平行
+            // 变换：旋转 45 + 缩放 Y 0.5 (标准等轴测顶部变换)
+            Rectangle()
+                 .fill(ImagePaint(image: Image(wallTexture), scale: textureScale))
+                 .frame(width: largeSize, height: largeSize)
+                 .rotationEffect(.degrees(45))
+                 .scaleEffect(x: 1.0, y: 0.5)
+                 .position(x: anchorPoint.x, y: anchorPoint.y) // 锚点对齐
+                 .mask(
+                     Path { path in
+                         let wallHeight: CGFloat = 200
+                         let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                         let p3 = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+
+                         let t1 = CGPoint(x: p1.x, y: p1.y - wallHeight)
+                         let t3 = CGPoint(x: p3.x, y: p3.y - wallHeight)
+
+                         // 右墙顶部
+                          path.move(to: t1)
+                          path.addLine(to: t3)
+                          path.addLine(to: CGPoint(x: t3.x, y: t3.y - wallThickness))
+                          path.addLine(to: CGPoint(x: t1.x, y: t1.y - wallThickness))
+                          path.closeSubpath()
+                      }
+                  )
+                 .overlay(Color.white.opacity(0.1))
+                 
+                 // 描边以防锯齿
+                 .overlay(
+                    Path { path in
+                         let wallHeight: CGFloat = 200
+                         let p1 = IsoGridConfig.toScreen(gridX: 0, gridY: 0)
+                         let p2 = IsoGridConfig.toScreen(gridX: 0, gridY: IsoGridConfig.gridSize)
+                         let p3 = IsoGridConfig.toScreen(gridX: IsoGridConfig.gridSize, gridY: 0)
+                         
+                         let t1 = CGPoint(x: p1.x, y: p1.y - wallHeight)
+                         let t2 = CGPoint(x: p2.x, y: p2.y - wallHeight)
+                         let t3 = CGPoint(x: p3.x, y: p3.y - wallHeight)
+                         
+                         path.move(to: t2)
+                         path.addLine(to: t1)
+                         path.addLine(to: t3)
+                    }
+                    .stroke(Color.black.opacity(0.1), lineWidth: 0.5)
+                 )
         }
     }
     
