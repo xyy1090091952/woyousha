@@ -90,6 +90,9 @@ struct HomeDecorationView: View {
                     // 1. 绘制网格地板
                     gridLayer
                     
+                    // 1.5 拖拽高亮提示层 (显示在网格之上，家具之下)
+                    dropHighlightLayer
+                    
                     // 2. 绘制已放置的家具
                     furnitureLayer
                     
@@ -105,34 +108,35 @@ struct HomeDecorationView: View {
                 // 预览模式下，为了避免顶部被切割，将中心点下移 (height / 2.5) - 稍微向上移动一点，避免底部被遮挡
                 .offset(x: geo.size.width / 2 + offset.width, y: geo.size.height / (isPreviewMode ? 2.5 : 4) + offset.height)
                 .scaleEffect(scale)
-                .gesture(
-                    // 预览模式下可能禁用手势，或者允许简单的查看
-                    SimultaneousGesture(
-                        // 拖拽画布
-                        DragGesture()
-                            .onChanged { value in
-                                if draggingContainer == nil {
-                                    offset = CGSize(
-                                        width: lastOffset.width + value.translation.width,
-                                        height: lastOffset.height + value.translation.height
-                                    )
-                                }
-                            }
-                            .onEnded { _ in
-                                lastOffset = offset
-                            },
-                        // 缩放画布
-                        MagnificationGesture()
-                            .onChanged { value in
-                                scale = lastScale * value
-                            }
-                            .onEnded { _ in
-                                lastScale = scale
-                            }
-                    )
-                )
             }
-            .allowsHitTesting(!isPreviewMode || true) // 预览模式下是否允许拖拽画布？允许吧，体验好一点
+            // 将手势添加到外层，并设置内容形状以确保空白区域也可点击
+            .contentShape(Rectangle())
+            .gesture(
+                // 预览模式下可能禁用手势，或者允许简单的查看
+                SimultaneousGesture(
+                    // 拖拽画布
+                    DragGesture()
+                        .onChanged { value in
+                            if draggingContainer == nil {
+                                offset = CGSize(
+                                    width: lastOffset.width + value.translation.width,
+                                    height: lastOffset.height + value.translation.height
+                                )
+                            }
+                        }
+                        .onEnded { _ in
+                            lastOffset = offset
+                        },
+                    // 缩放画布
+                    MagnificationGesture()
+                        .onChanged { value in
+                            scale = lastScale * value
+                        }
+                        .onEnded { _ in
+                            lastScale = scale
+                        }
+                )
+            )
             
             // 底部家具栏 (仅在编辑模式下显示)
             VStack {
@@ -221,6 +225,83 @@ struct HomeDecorationView: View {
                 path.closeSubpath()
             }
             .fill(Color(hex: "C0C0C0")) // 再深一点的灰色，区分光影
+        }
+    }
+    
+    // 计算当前拖拽对应的目标网格坐标
+    private var currentDragGridPos: (x: Int, y: Int)? {
+        guard let container = draggingContainer else { return nil }
+        
+        let currentPos = IsoGridConfig.toScreen(gridX: container.gridX, gridY: container.gridY)
+        let finalPos = CGPoint(x: currentPos.x + dragOffset.width, y: currentPos.y + dragOffset.height)
+        
+        let (newX, newY) = IsoGridConfig.toGrid(screenX: finalPos.x, screenY: finalPos.y)
+        
+        // 边界限制
+        let clampedX = max(0, min(IsoGridConfig.gridSize - 1, newX))
+        let clampedY = max(0, min(IsoGridConfig.gridSize - 1, newY))
+        
+        return (clampedX, clampedY)
+    }
+    
+    // 拖拽高亮层
+    var dropHighlightLayer: some View {
+        Group {
+            if let container = draggingContainer {
+                // 获取当前拖拽的家具配置
+                let config = FurnitureConfig.get(byImageName: container.furnitureImageName ?? "") ?? 
+                             FurnitureConfig.all.first(where: { container.name.contains($0.name) })
+                
+                if let config = config, let (baseX, baseY) = currentDragGridPos {
+                    // 绘制每个占据的格子
+                    ForEach(0..<config.width, id: \.self) { dx in
+                        ForEach(0..<config.depth, id: \.self) { dy in
+                            let targetX = baseX + dx
+                            let targetY = baseY + dy
+                            
+                            // 只绘制在网格范围内的
+                            if targetX < IsoGridConfig.gridSize && targetY < IsoGridConfig.gridSize {
+                                ZStack {
+                                    Path { path in
+                                        let center = IsoGridConfig.toScreen(gridX: targetX, gridY: targetY)
+                                        let w = IsoGridConfig.tileWidth
+                                        let h = IsoGridConfig.tileHeight
+                                        
+                                        path.move(to: CGPoint(x: center.x, y: center.y - h/2))
+                                        path.addLine(to: CGPoint(x: center.x + w/2, y: center.y))
+                                        path.addLine(to: CGPoint(x: center.x, y: center.y + h/2))
+                                        path.addLine(to: CGPoint(x: center.x - w/2, y: center.y))
+                                        path.closeSubpath()
+                                    }
+                                    .fill(Color.green.opacity(0.4))
+                                    
+                                    Path { path in
+                                        let center = IsoGridConfig.toScreen(gridX: targetX, gridY: targetY)
+                                        let w = IsoGridConfig.tileWidth
+                                        let h = IsoGridConfig.tileHeight
+                                        
+                                        path.move(to: CGPoint(x: center.x, y: center.y - h/2))
+                                        path.addLine(to: CGPoint(x: center.x + w/2, y: center.y))
+                                        path.addLine(to: CGPoint(x: center.x, y: center.y + h/2))
+                                        path.addLine(to: CGPoint(x: center.x - w/2, y: center.y))
+                                        path.closeSubpath()
+                                    }
+                                    .stroke(Color.green, lineWidth: 2)
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 显示尺寸提示文字 (可选)
+                    let center = IsoGridConfig.toScreen(gridX: baseX, gridY: baseY)
+                    Text("\(config.width)x\(config.depth)")
+                        .font(.caption)
+                        .padding(4)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(4)
+                        .position(x: center.x, y: center.y - IsoGridConfig.tileHeight)
+                }
+            }
         }
     }
     
@@ -380,17 +461,21 @@ struct FurnitureView: View {
         VStack(spacing: 0) {
             if let config = furnitureConfig {
                 // 使用图片素材渲染
-                Image(config.imageName)
-                    .resizable()
-                    .scaledToFit()
-                    // 动态计算宽度：基于网格宽度
-                    // 使用新的 scale 参数，移除硬编码的 1.5 倍率
-                    .frame(width: IsoGridConfig.tileWidth * CGFloat(max(config.width, config.depth)) * config.scale)
-                    // 调整垂直偏移，让底座对齐网格中心，并叠加配置的微调
-                    // 原来的逻辑是 -IsoGridConfig.tileHeight * 0.8，现在可以更精确控制
-                    // 通常我们需要让图片的“底面中心”对齐 (0,0)
-                    // 假设图片底部是底面。
-                    .offset(y: -IsoGridConfig.tileHeight * 0.5 + config.offsetY)
+                // 解决悬浮问题：使用 overlay + bottom alignment 技巧
+                // 主体是一个不可见的锚点视图 (0x0)，将图片作为覆盖层向上绘制
+                Color.clear
+                    .frame(width: 0, height: 0)
+                    .overlay(alignment: .bottom) {
+                        Image(config.imageName)
+                            .resizable()
+                            .scaledToFit()
+                            // 动态计算宽度
+                            .frame(width: IsoGridConfig.tileWidth * CGFloat(max(config.width, config.depth)) * config.scale)
+                            // 额外的垂直微调 (offsetY)
+                            .offset(y: config.offsetY)
+                            // 确保图片可以超出锚点范围显示
+                            .fixedSize() 
+                    }
             } else {
                 // 降级渲染：原来的蓝盒子
                 fallbackView
