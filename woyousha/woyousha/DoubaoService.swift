@@ -16,7 +16,10 @@ class DoubaoService {
     
     // MARK: - 配置项 (需要替换为你自己的配置)
     // 请前往火山引擎控制台获取: https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint
-    private let apiKey = "67104f51-be75-4c49-b31f-cb347c0ff789"
+    // 从 Info.plist 读取 API Key，避免硬编码
+    private var apiKey: String {
+        return Bundle.main.object(forInfoDictionaryKey: "DOUBAO_API_KEY") as? String ?? ""
+    }
     // 从截图代码示例中提取的模型 ID
     private let modelEndpointId = "doubao-seed-1-8-251228" 
     private let baseURL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
@@ -56,10 +59,13 @@ class DoubaoService {
         请只返回一个 JSON 对象，不要包含 markdown 格式或其他废话。
         JSON 格式如下：
         {
-            "name": "物品名称(简短)",
+            "name": "物品名称(限制在7个汉字以内)",
             "category": "物品分类(只能是以下之一: 衣服, 食品, 数码, 书籍, 药品, 工具, 其他)"
         }
-        注意：category 字段必须严格返回上述中文枚举值之一，不要返回英文。
+        要求：
+        1. 物品名称要尽量精准，描述出品牌、款式、颜色或口味等特征（例如：“Switch手柄”、“优衣库黑T恤”、“乐事薯片”）。
+        2. 尽管要精准，但名称总长度严格不能超过 7 个汉字。如果太长，请精简。
+        3. category 字段必须严格返回上述中文枚举值之一，不要返回英文。
         """
         
         // 3. 构造请求体 (OpenAI 兼容格式)

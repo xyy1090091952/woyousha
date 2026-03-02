@@ -6,5 +6,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+    <key>DOUBAO_API_KEY</key>
+    <string>67104f51-be75-4c49-b31f-cb347c0ff789</string>
 </dict>
 </plist>
