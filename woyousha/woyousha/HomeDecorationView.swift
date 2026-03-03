@@ -50,12 +50,35 @@ struct HomeDecorationView: View {
     }
     
     var body: some View {
+        if isPreviewMode {
+            contentView
+        } else {
+            contentView
+                .navigationTitle(isEditing ? "装修模式" : "我的家")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(isEditing ? "完成" : "装修") {
+                            if isEditing {
+                                dismiss()
+                            } else {
+                                withAnimation {
+                                    isEditing.toggle()
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+    }
+    
+    var contentView: some View {
         ZStack {
             // 背景色
             if !isPreviewMode {
                 Color(hex: "F2F2F7").ignoresSafeArea()
             } else {
-                Color.clear
+                Color.clear.ignoresSafeArea() // 确保背景色忽略安全区域，以便填满整个区域
             }
             
             // 自由布局画布
@@ -110,6 +133,7 @@ struct HomeDecorationView: View {
                         }
                     }
                 }
+                .border(Color.yellow, width: 2) // 调试边框：画布内容
                 // 初始位置：居中显示
                 .frame(width: RoomConfig.roomWidth, height: RoomConfig.roomHeight)
                 // 调整初始偏移，确保画布中心对齐屏幕中心
@@ -117,6 +141,7 @@ struct HomeDecorationView: View {
                         y: (geo.size.height - RoomConfig.roomHeight) / 2 + offset.height)
                 .scaleEffect(scale)
             }
+            .border(Color.orange, width: 2) // 调试边框：GeometryReader
             .contentShape(Rectangle())
             // 画布交互手势 (拖拽移动画布，缩放画布)
             .gesture(
@@ -163,31 +188,15 @@ struct HomeDecorationView: View {
             }
             
             // 底部家具栏 (仅在编辑模式下显示)
-            VStack {
-                Spacer()
-                if isEditing && !isPreviewMode {
+            if isEditing && !isPreviewMode {
+                VStack {
+                    Spacer()
                     furnitureDrawer
                         .transition(.move(edge: .bottom))
                 }
             }
         }
-        .navigationTitle(isPreviewMode ? "" : (isEditing ? "装修模式" : "我的家"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if !isPreviewMode {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(isEditing ? "完成" : "装修") {
-                        if isEditing {
-                            dismiss()
-                        } else {
-                            withAnimation {
-                                isEditing.toggle()
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        .border(Color.purple, width: 2) // 调试边框：HomeDecorationView 根视图
         .onAppear {
             if isPreviewMode {
                 scale = 0.5 // 预览模式缩小适应

@@ -201,14 +201,13 @@ struct ContentView: View {
             // 1. 内容层：改为 HomeDecorationView 的入口
             // 直接展示 HomeDecorationView (预览模式)
             ZStack {
-                // 使用 HomeDecorationView 作为背景预览
+                // 使用 Home DecorationView 作为背景预览
                 // 开启 isPreviewMode，隐藏导航栏和底部抽屉
                 // 传递 selectedContainerID 绑定
                 HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
-                    .frame(height: homeHeaderHeight) // 使用动态高度
             }
+            .frame(height: homeHeaderHeight) // 使用动态高度
             // .background(Color.blue.opacity(0.05)) // 移除浅蓝色背景
-            .ignoresSafeArea(edges: .top) // 忽略顶部安全区域，让背景通顶
             .onTapGesture {
                 // 点击整个区域也可以进入装修模式？或者只是预览交互
                 // 用户说“在首页预览的页面不应该看得到所谓的仓库，应该就是个纯预览”
@@ -218,7 +217,6 @@ struct ContentView: View {
             
             // 顶部按钮栏
             HStack {
-                // ... (保持原样)
                 // 添加物品按钮 (左侧)
                 if !isEditing {
                     Button(action: { showAddSheet = true }) {
@@ -269,6 +267,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16) // 恢复正常的顶部间距
+            .border(Color.blue, width: 2) // 调试边框：顶部按钮栏
             
             // 高度切换按钮 (右下角)
             // 使用 overlay 实现，避免 VStack/HStack 的空白区域遮挡底层点击
@@ -290,7 +289,9 @@ struct ContentView: View {
             }
             .padding(.trailing, 16)
             .padding(.bottom, 16)
+            .border(Color.green, width: 2) // 调试边框：缩放按钮
         }
+        .border(Color.red, width: 2) // 调试边框：整个 homeHeaderView
         // 2. 背景层：单独设置背景色并延伸到安全区域
         .background(
             Color.gray.opacity(0.1)
