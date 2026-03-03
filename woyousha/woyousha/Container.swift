@@ -32,6 +32,13 @@ final class Container {
     // 关联的家具图片名称 (如果是自定义图片)
     var furnitureImageName: String?
     
+    // Free Placement Properties (Sticker Mode)
+    var posX: Double = 0.0 // 屏幕/图片相对坐标 X
+    var posY: Double = 0.0 // 屏幕/图片相对坐标 Y
+    var scale: Double = 1.0 // 缩放比例
+    var isMirrored: Bool = false // 是否水平镜像
+    var zIndex: Int = 0 // 层级顺序
+    
     var createdDate: Date
     var updatedDate: Date
     
@@ -46,6 +53,11 @@ final class Container {
         gridDepth: Int = 1,
         isPlaced: Bool = false,
         furnitureImageName: String? = nil,
+        posX: Double = 0.0,
+        posY: Double = 0.0,
+        scale: Double = 1.0,
+        isMirrored: Bool = false,
+        zIndex: Int = 0,
         createdDate: Date = Date(),
         updatedDate: Date = Date()
     ) {
@@ -59,6 +71,11 @@ final class Container {
         self.gridDepth = gridDepth
         self.isPlaced = isPlaced
         self.furnitureImageName = furnitureImageName
+        self.posX = posX
+        self.posY = posY
+        self.scale = scale
+        self.isMirrored = isMirrored
+        self.zIndex = zIndex
         self.createdDate = createdDate
         self.updatedDate = updatedDate
     }

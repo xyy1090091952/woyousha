@@ -271,29 +271,25 @@ struct ContentView: View {
             .padding(.top, 16) // 恢复正常的顶部间距
             
             // 高度切换按钮 (右下角)
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            homeHeaderHeight = homeHeaderHeight == maxHeaderHeight ? minHeaderHeight : maxHeaderHeight
-                        }
-                    }) {
-                        Image(systemName: homeHeaderHeight == maxHeaderHeight ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.gray)
-                            .padding(8)
-                            .background(Color.white.opacity(0.9))
-                            .clipShape(Circle())
-                            .shadow(radius: 2)
-                            .rotationEffect(.degrees(homeHeaderHeight == maxHeaderHeight ? 0 : 180)) // 旋转动画
-                    }
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 16)
+            // 使用 overlay 实现，避免 VStack/HStack 的空白区域遮挡底层点击
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Button(action: {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                    homeHeaderHeight = homeHeaderHeight == maxHeaderHeight ? minHeaderHeight : maxHeaderHeight
                 }
+            }) {
+                Image(systemName: homeHeaderHeight == maxHeaderHeight ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.gray)
+                    .padding(8)
+                    .background(Color.white.opacity(0.9))
+                    .clipShape(Circle())
+                    .shadow(radius: 2)
+                    .rotationEffect(.degrees(homeHeaderHeight == maxHeaderHeight ? 0 : 180)) // 旋转动画
             }
-            .frame(height: homeHeaderHeight) // 限制按钮容器高度跟随 header 变化
+            .padding(.trailing, 16)
+            .padding(.bottom, 16)
         }
         // 2. 背景层：单独设置背景色并延伸到安全区域
         .background(
@@ -303,8 +299,8 @@ struct ContentView: View {
         // 全屏装修模式
         .fullScreenCover(isPresented: $showDecorationSheet) {
             NavigationStack {
-                // 直接进入编辑模式
-                HomeDecorationView(isPreviewMode: false, isEditing: true)
+                // 直接进入编辑模式，并传递选中状态绑定，确保可以交互
+                HomeDecorationView(isPreviewMode: false, isEditing: true, selectedContainerID: $selectedContainerID)
             }
         }
     }
