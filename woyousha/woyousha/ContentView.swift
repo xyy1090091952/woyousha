@@ -267,7 +267,6 @@ struct ContentView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16) // 恢复正常的顶部间距
-            .border(Color.blue, width: 2) // 调试边框：顶部按钮栏
             
             // 高度切换按钮 (右下角)
             // 使用 overlay 实现，避免 VStack/HStack 的空白区域遮挡底层点击
@@ -289,9 +288,7 @@ struct ContentView: View {
             }
             .padding(.trailing, 16)
             .padding(.bottom, 16)
-            .border(Color.green, width: 2) // 调试边框：缩放按钮
         }
-        .border(Color.red, width: 2) // 调试边框：整个 homeHeaderView
         // 2. 背景层：单独设置背景色并延伸到安全区域
         .background(
             Color.gray.opacity(0.1)

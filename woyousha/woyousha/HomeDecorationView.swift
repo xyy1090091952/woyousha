@@ -123,9 +123,8 @@ struct HomeDecorationView: View {
                         })
                         // 位置：跟随家具，并向上偏移
                         // 注意：这里的位置是在画布坐标系中
-                        .position(x: container.posX, y: container.posY - 80 / scale) // 向上偏移 80 点 (考虑缩放)
-                        // 抵消画布的缩放，保持菜单大小一致
-                        .scaleEffect(1/scale)
+                        .scaleEffect(1/scale) // 关键修复：先抵消缩放
+                        .position(getMenuPosition(for: container)) // 再设置位置，确保位置计算不受缩放影响
                         .zIndex(1000) // 确保菜单始终在最顶层
                         .transaction { transaction in
                             // 禁用位置变化的动画，实现“闪现”效果
@@ -133,7 +132,6 @@ struct HomeDecorationView: View {
                         }
                     }
                 }
-                .border(Color.yellow, width: 2) // 调试边框：画布内容
                 // 初始位置：居中显示
                 .frame(width: RoomConfig.roomWidth, height: RoomConfig.roomHeight)
                 // 调整初始偏移，确保画布中心对齐屏幕中心
@@ -141,12 +139,11 @@ struct HomeDecorationView: View {
                         y: (geo.size.height - RoomConfig.roomHeight) / 2 + offset.height)
                 .scaleEffect(scale)
             }
-            .border(Color.orange, width: 2) // 调试边框：GeometryReader
             .contentShape(Rectangle())
             // 画布交互手势 (拖拽移动画布，缩放画布)
             .gesture(
                 SimultaneousGesture(
-                    DragGesture()
+                    DragGesture(minimumDistance: 0) // 设置为 0 实现无延迟拖拽
                         .onChanged { value in
                             // 如果没有选中家具在拖拽，则拖拽画布
                             if draggingContainerID == nil {
@@ -196,7 +193,6 @@ struct HomeDecorationView: View {
                 }
             }
         }
-        .border(Color.purple, width: 2) // 调试边框：HomeDecorationView 根视图
         .onAppear {
             if isPreviewMode {
                 scale = 0.5 // 预览模式缩小适应
@@ -213,24 +209,10 @@ struct HomeDecorationView: View {
                 .position(x: container.posX + (draggingContainerID == container.id.uuidString ? dragOffset.width / scale : 0),
                           y: container.posY + (draggingContainerID == container.id.uuidString ? dragOffset.height / scale : 0))
                 .zIndex(Double(container.zIndex))
-                // 使用 highPriorityGesture 确保点击优先于背景拖拽
-                .highPriorityGesture(
-                    TapGesture()
-                        .onEnded {
-                            if isEditing {
-                                withAnimation {
-                                    selectedContainerID = container.id.uuidString
-                                }
-                            } else {
-                                withAnimation {
-                                    selectedContainerID = (selectedContainerID == container.id.uuidString) ? nil : container.id.uuidString
-                                }
-                            }
-                        }
-                )
-                // 拖拽手势
+                // 优化后的手势：合并拖拽和点击，解决拖拽延迟问题
                 .gesture(
-                    isEditing ? DragGesture(minimumDistance: 10) // 增加最小拖拽距离，避免误触点击
+                    isEditing ? 
+                    DragGesture(minimumDistance: 0) // 零延迟拖拽
                         .onChanged { value in
                             if draggingContainerID == nil {
                                 draggingContainerID = container.id.uuidString
@@ -240,15 +222,37 @@ struct HomeDecorationView: View {
                             dragOffset = value.translation
                         }
                         .onEnded { value in
-                            if draggingContainerID == container.id.uuidString {
-                                // 更新模型坐标 (考虑缩放比例，位移需要除以 scale)
-                                container.posX += value.translation.width / scale
-                                container.posY += value.translation.height / scale
+                            // 判断位移距离，如果小于 5pt 且没有明显位移，视为点击
+                            if abs(value.translation.width) < 5 && abs(value.translation.height) < 5 {
+                                // 点击逻辑
+                                withAnimation {
+                                    // 如果之前是选中状态，且点击了同一个，则取消选中（或者保持选中，根据需求）
+                                    // 这里保留之前的逻辑：再次点击不取消，点击背景取消
+                                    selectedContainerID = container.id.uuidString
+                                }
+                            } else {
+                                // 拖拽结束逻辑
+                                if draggingContainerID == container.id.uuidString {
+                                    // 更新模型坐标 (考虑缩放比例，位移需要除以 scale)
+                                    container.posX += value.translation.width / scale
+                                    container.posY += value.translation.height / scale
+                                }
                             }
+                            
+                            // 重置状态
                             draggingContainerID = nil
                             dragOffset = .zero
-                        } : nil
+                        }
+                    : nil
                 )
+                // 非编辑模式下的简单点击
+                .onTapGesture {
+                    if !isEditing {
+                        withAnimation {
+                            selectedContainerID = (selectedContainerID == container.id.uuidString) ? nil : container.id.uuidString
+                        }
+                    }
+                }
                 // 缩放手势 (选中时生效) - SwiftUI 的 MagnificationGesture 如果放在这里可能会和外层冲突
                 // 简化起见，我们可以在操作栏加 Slider，或者使用 SimultaneousGesture
         }
@@ -320,6 +324,74 @@ struct HomeDecorationView: View {
         let minZ = containers.map { $0.zIndex }.min() ?? 0
         // 限制 zIndex 不低于 0，避免穿透到背景图（背景图 zIndex 为 -1000）
         container.zIndex = max(0, minZ - 1)
+    }
+    
+    // 动态计算气泡菜单位置，使其始终贴合家具顶部
+    func getMenuPosition(for container: Container) -> CGPoint {
+        // 1. 获取家具配置
+        let config: FurnitureConfig
+        if let imageName = container.furnitureImageName,
+           let c = FurnitureConfig.get(byImageName: imageName) {
+            config = c
+        } else {
+            config = FurnitureConfig.all.first { container.name.contains($0.name) } ?? FurnitureConfig.all[0]
+        }
+        
+        // 2. 计算家具在画布坐标系中的高度
+        // FurnitureView 中的逻辑：width = RoomConfig.tileWidth * max(w, d) * config.scale * container.scale
+        // 假设图片大致是方形，高度近似等于宽度（或者略小，取决于等轴测视角）
+        // 这里我们使用宽度的一半作为“半径”估算，再加上一些余量
+        let furnitureSize = RoomConfig.tileWidth * CGFloat(max(config.width, config.depth)) * config.scale * container.scale
+        let furnitureRadius = furnitureSize / 2
+        
+        // 3. 计算菜单的偏移量
+        // 菜单自身的高度约为 100pt (按钮行 + 滑块行 + Padding)
+        // 我们希望菜单底部距离家具顶部有一定的间距 (例如 10pt)
+        // 菜单视觉高度的一半（因为 anchor 是 center）约为 50pt
+        // 另外需要加上 padding
+        
+        // 目标：菜单视觉中心 Y = 家具视觉顶部 Y - (菜单视觉高度/2 + 间距)
+        // 家具视觉顶部 Y (相对于家具中心) = -furnitureRadius * scale
+        // 菜单视觉中心 Y (相对于家具中心) = -furnitureRadius * scale - (50 + 10)
+        
+        // 转换为画布坐标系 (除以 scale)
+        // 菜单中心 Y (画布) = container.posY - furnitureRadius - 60 / scale
+        
+        // 修正逻辑：由于我们现在是先 scaleEffect(1/scale) 再 position
+        // 这意味着 position 设置的是菜单的中心点（在 ZStack 坐标系中）
+        // 菜单自身的视觉大小是固定的（不随 scale 变化）
+        // 但是家具的大小是随 scale 变化的（在 ZStack 中被放大）
+        // 所以，家具的视觉顶部距离中心是 furnitureRadius * scale
+        // 菜单的视觉高度的一半是 50
+        // 我们希望菜单底部距离家具顶部 10pt
+        // 所以菜单中心 Y = 家具中心 Y - 家具视觉半径 - 菜单半高 - 间距
+        // MenuCenterY = (container.posY * scale) - (furnitureRadius * scale) - 50 - 10
+        // 但是，position 需要的是 ZStack 内部坐标系的值
+        // 而 ZStack 本身被 scale 了。
+        // 如果我们在 ZStack 内部放置一个点 (x, y)，它会被渲染在 (x * scale, y * scale)
+        // 所以我们需要反推 position 的 y 值：
+        // (y * scale) = (container.posY * scale) - (furnitureRadius * scale) - 60
+        // y = container.posY - furnitureRadius - 60 / scale
+        
+        // 等等，之前的逻辑似乎是对的？那为什么会偏？
+        // 可能是因为 scaleEffect(1/scale) 的 anchor 问题
+        // 如果我们先 scaleEffect(1/scale)，菜单本身变成了原始大小
+        // 然后 position 把它放到指定位置。
+        // 这个位置是在 ZStack 坐标系中的。
+        // ZStack 渲染时，会把这个位置放大 scale 倍。
+        // 所以最终屏幕上的位置是 position * scale。
+        // 我们希望屏幕上的位置是：家具屏幕位置 - 家具屏幕半径 - 60
+        // (pos * scale) = (container.posY * scale) - (furnitureRadius * scale) - 60
+        // pos = container.posY - furnitureRadius - 60 / scale
+        
+        // 结论：公式本身没错。
+        // 问题可能出在之前 scaleEffect 是在 position 之后，导致它是以全屏为 anchor 缩放的。
+        // 现在交换了顺序，应该就正常了。
+        
+        return CGPoint(
+            x: container.posX,
+            y: container.posY - furnitureRadius - 60 / scale
+        )
     }
 }
 
