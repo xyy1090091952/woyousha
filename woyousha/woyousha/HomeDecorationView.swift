@@ -9,6 +9,9 @@ struct RoomConfig {
     // 为了适应屏幕，我们设置一个合理的默认大小
     static let roomWidth: CGFloat = 800 
     static let roomHeight: CGFloat = 800
+    
+    // 用于家具尺寸计算的基础瓦片宽度
+    static let tileWidth: CGFloat = 64
 }
 
 struct HomeDecorationView: View {
@@ -415,7 +418,7 @@ struct FurnitureBubbleMenu: View {
 // 单个家具视图
 struct FurnitureView: View {
     let container: Container
-    var isSelected: Bool = false
+    let isSelected: Bool
     
     var furnitureConfig: FurnitureConfig? {
         if let imageName = container.furnitureImageName,
@@ -430,7 +433,7 @@ struct FurnitureView: View {
         Group {
             if let config = furnitureConfig {
                 // 计算当前尺寸
-                let width = IsoGridConfig.tileWidth * CGFloat(max(config.width, config.depth)) * config.scale * container.scale
+                let width = RoomConfig.tileWidth * CGFloat(max(config.width, config.depth)) * config.scale * container.scale
                 
                 Image(config.imageName)
                     .resizable()
@@ -469,11 +472,6 @@ struct FurnitureView: View {
             }
         }
     }
-}
-
-// 保留 IsoGridConfig 用于 FurnitureConfig 中的尺寸计算参考，或者可以将其硬编码值提取出来
-struct IsoGridConfig {
-    static let tileWidth: CGFloat = 64
 }
 
 // 辅助扩展：Hex Color
