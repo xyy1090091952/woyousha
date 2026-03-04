@@ -1,6 +1,11 @@
 import SwiftUI
 import SwiftData
 
+// Notification Name Extension
+extension NSNotification.Name {
+    static let resetHomeView = NSNotification.Name("ResetHomeView")
+}
+
 // Isometric 网格配置已废弃，移除相关代码
 // 使用简单的坐标转换配置
 struct RoomConfig {
@@ -25,6 +30,11 @@ struct HomeDecorationView: View {
     var isPreviewMode: Bool = false
     
     // 视图状态
+    // 使用 @AppStorage 保存视图状态，确保重启后恢复位置和缩放
+    @AppStorage("homeViewOffsetX") private var storedOffsetX: Double = 0.0
+    @AppStorage("homeViewOffsetY") private var storedOffsetY: Double = 0.0
+    @AppStorage("homeViewScale") private var storedScale: Double = 1.0
+    
     @State private var offset: CGSize = .zero // 画布偏移
     @State private var lastOffset: CGSize = .zero
     @State private var scale: CGFloat = 1.0 // 缩放
@@ -161,6 +171,10 @@ struct HomeDecorationView: View {
                                 } else {
                                     // 确认拖拽，更新最后位置
                                     lastOffset = offset
+                                    
+                                    // 保存新的偏移量
+                                    storedOffsetX = Double(offset.width)
+                                    storedOffsetY = Double(offset.height)
                                 }
                             }
                         },
@@ -170,17 +184,25 @@ struct HomeDecorationView: View {
                         }
                         .onEnded { _ in
                             lastScale = scale
+                            
+                            // 保存新的缩放比例
+                            storedScale = Double(scale)
                         }
                 )
             )
             
             // 监听复位通知
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetHomeView"))) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .resetHomeView)) { _ in
                 withAnimation {
                     scale = 1.0
                     lastScale = 1.0
                     offset = .zero
                     lastOffset = .zero
+                    
+                    // 复位存储的状态
+                    storedScale = 1.0
+                    storedOffsetX = 0.0
+                    storedOffsetY = 0.0
                 }
             }
             
@@ -196,6 +218,11 @@ struct HomeDecorationView: View {
                                 lastScale = 1.0
                                 offset = .zero
                                 lastOffset = .zero
+                                
+                                // 复位存储的状态
+                                storedScale = 1.0
+                                storedOffsetX = 0.0
+                                storedOffsetY = 0.0
                             }
                         }) {
                             Image(systemName: "scope")
@@ -241,8 +268,24 @@ struct HomeDecorationView: View {
         }
         .onAppear {
             if isPreviewMode {
-                scale = 0.5 // 预览模式缩小适应
-                lastScale = 0.5
+                // 如果存储了状态，则恢复；否则使用默认值
+                if storedScale != 0 {
+                    scale = storedScale
+                    lastScale = storedScale
+                    offset = CGSize(width: storedOffsetX, height: storedOffsetY)
+                    lastOffset = offset
+                } else {
+                    scale = 0.5 // 预览模式缩小适应
+                    lastScale = 0.5
+                }
+            } else {
+                // 编辑模式也恢复状态
+                if storedScale != 0 {
+                    scale = storedScale
+                    lastScale = storedScale
+                    offset = CGSize(width: storedOffsetX, height: storedOffsetY)
+                    lastOffset = offset
+                }
             }
         }
     }

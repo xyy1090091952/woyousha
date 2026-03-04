@@ -282,7 +282,7 @@ struct ContentView: View {
                     // 通知 HomeDecorationView 复位
                     // 由于 HomeDecorationView 是内嵌的，我们需要一种方式通信
                     // 简单起见，我们通过 NotificationCenter 发送通知
-                    NotificationCenter.default.post(name: NSNotification.Name("ResetHomeView"), object: nil)
+                    NotificationCenter.default.post(name: .resetHomeView, object: nil)
                 }) {
                     Image(systemName: "scope")
                         .font(.system(size: 14, weight: .bold))
@@ -311,9 +311,6 @@ struct ContentView: View {
             }
             .padding(.trailing, 16)
             .padding(.bottom, 16)
-            // 关键修复：让按钮组的位置也参与动画，确保跟随父容器高度变化
-            // 使用 easeInOut 动画，与上面的按钮点击动画保持一致，避免弹性
-            .animation(.easeInOut(duration: 0.3), value: homeHeaderHeight)
         }
         // 2. 背景层：单独设置背景色并延伸到安全区域
         .background(
