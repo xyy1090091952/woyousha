@@ -8,7 +8,8 @@
 import Foundation
 
 // 家具配置结构体
-struct FurnitureConfig {
+struct FurnitureConfig: Identifiable {
+    var id: String { imageName }
     let name: String
     let icon: String // SF Symbol
     let imageName: String // Assets image name

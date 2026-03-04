@@ -60,7 +60,8 @@ struct ContentView: View {
     private let hasInitializedKey = "hasInitializedDefaultContainers"
     
     // 网格布局状态
-    @State private var gridColumnCount: Int = 2
+    // 使用 @AppStorage 持久化存储列数设置
+    @AppStorage("gridColumnCount") private var gridColumnCount: Int = 2
     @State private var baseColumnCount: CGFloat = 2.0
     // 用于在缩放过程中记录精确的列数计算结果
     @State private var preciseColumnCount: CGFloat = 2.0
@@ -91,6 +92,9 @@ struct ContentView: View {
             .navigationBarHidden(true) // 隐藏默认导航栏，使用自定义头部
             .onAppear {
                 initializeDefaultContainers()
+                // 同步 baseColumnCount 与 gridColumnCount
+                baseColumnCount = CGFloat(gridColumnCount)
+                preciseColumnCount = CGFloat(gridColumnCount)
             }
             .sheet(isPresented: $showAddSheet) {
                 // 如果当前选中的是具体容器，则默认选中该容器
@@ -272,22 +276,44 @@ struct ContentView: View {
             // 使用 overlay 实现，避免 VStack/HStack 的空白区域遮挡底层点击
         }
         .overlay(alignment: .bottomTrailing) {
-            Button(action: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                    homeHeaderHeight = homeHeaderHeight == maxHeaderHeight ? minHeaderHeight : maxHeaderHeight
+            VStack(spacing: 12) {
+                // 定位复位按钮 (新增，样式与缩放按钮统一)
+                Button(action: {
+                    // 通知 HomeDecorationView 复位
+                    // 由于 HomeDecorationView 是内嵌的，我们需要一种方式通信
+                    // 简单起见，我们通过 NotificationCenter 发送通知
+                    NotificationCenter.default.post(name: NSNotification.Name("ResetHomeView"), object: nil)
+                }) {
+                    Image(systemName: "scope")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.gray)
+                        .padding(8)
+                        .background(Color.white.opacity(0.9))
+                        .clipShape(Circle())
+                        .shadow(radius: 2)
                 }
-            }) {
-                Image(systemName: homeHeaderHeight == maxHeaderHeight ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.gray)
-                    .padding(8)
-                    .background(Color.white.opacity(0.9))
-                    .clipShape(Circle())
-                    .shadow(radius: 2)
-                    .rotationEffect(.degrees(homeHeaderHeight == maxHeaderHeight ? 0 : 180)) // 旋转动画
+                
+                Button(action: {
+                    // 使用 easeInOut 动画，速度更快，没有弹性
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        homeHeaderHeight = homeHeaderHeight == maxHeaderHeight ? minHeaderHeight : maxHeaderHeight
+                    }
+                }) {
+                    Image(systemName: homeHeaderHeight == maxHeaderHeight ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.gray)
+                        .padding(8)
+                        .background(Color.white.opacity(0.9))
+                        .clipShape(Circle())
+                        .shadow(radius: 2)
+                        // 移除了旋转动画，消除视觉上的延迟感
+                }
             }
             .padding(.trailing, 16)
             .padding(.bottom, 16)
+            // 关键修复：让按钮组的位置也参与动画，确保跟随父容器高度变化
+            // 使用 easeInOut 动画，与上面的按钮点击动画保持一致，避免弹性
+            .animation(.easeInOut(duration: 0.3), value: homeHeaderHeight)
         }
         // 2. 背景层：单独设置背景色并延伸到安全区域
         .background(

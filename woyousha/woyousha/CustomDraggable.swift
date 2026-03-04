@@ -164,6 +164,16 @@ struct CustomDraggable<Content: View, Preview: View>: UIViewRepresentable {
                 self.parent.onDragEnd?()
             }
         }
+        
+        // 控制是否允许移动操作，始终返回 .move 可以隐藏加号（因为默认是 .copy 会显示加号）
+        func dragInteraction(_ interaction: UIDragInteraction, sessionAllowsMoveOperation session: UIDragSession) -> Bool {
+            return true
+        }
+        
+        // 关键：显式返回 .move 操作，这会告诉系统不要显示绿色的加号（Copy 标志）
+        func dragInteraction(_ interaction: UIDragInteraction, item: UIDragItem, willAnimateCancelWith animator: UIDragAnimating) {
+            // 不需要特别处理取消动画
+        }
     }
 }
 

@@ -92,14 +92,7 @@ struct HomeDecorationView: View {
                         // .background(Color.gray.opacity(0.1)) 
                         .frame(width: RoomConfig.roomWidth, height: RoomConfig.roomHeight)
                         .position(x: RoomConfig.roomWidth/2, y: RoomConfig.roomHeight/2)
-                        // 点击背景取消选中
-                        .onTapGesture {
-                            if isEditing {
-                                withAnimation {
-                                    selectedContainerID = nil
-                                }
-                            }
-                        }
+                        // 点击背景取消选中的逻辑已合并到外层手势中
                         .zIndex(-1000) // 确保背景始终在最底层
                     
                     // 1. 绘制已放置的家具 (贴纸)
@@ -153,8 +146,23 @@ struct HomeDecorationView: View {
                                 )
                             }
                         }
-                        .onEnded { _ in
-                            lastOffset = offset
+                        .onEnded { value in
+                            if draggingContainerID == nil {
+                                // 判断是否是微小移动（点击）
+                                if abs(value.translation.width) < 5 && abs(value.translation.height) < 5 {
+                                    // 视为点击：取消选中
+                                    if isEditing {
+                                        withAnimation {
+                                            selectedContainerID = nil
+                                        }
+                                    }
+                                    // 恢复位置，避免微小抖动
+                                    offset = lastOffset
+                                } else {
+                                    // 确认拖拽，更新最后位置
+                                    lastOffset = offset
+                                }
+                            }
                         },
                     MagnificationGesture()
                         .onChanged { value in
@@ -165,6 +173,44 @@ struct HomeDecorationView: View {
                         }
                 )
             )
+            
+            // 监听复位通知
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ResetHomeView"))) { _ in
+                withAnimation {
+                    scale = 1.0
+                    lastScale = 1.0
+                    offset = .zero
+                    lastOffset = .zero
+                }
+            }
+            
+            // 定位复位按钮 (仅在编辑模式显示，因为预览模式的复位按钮在 ContentView 中处理了)
+            if isEditing {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation {
+                                scale = 1.0
+                                lastScale = 1.0
+                                offset = .zero
+                                lastOffset = .zero
+                            }
+                        }) {
+                            Image(systemName: "scope")
+                                .font(.title2)
+                                .foregroundStyle(.primary)
+                                .padding(12)
+                                .background(.regularMaterial)
+                                .clipShape(Circle())
+                                .shadow(radius: 4)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 180)
+                    }
+                }
+            }
             
             // 顶部房间切换栏 (仅在编辑模式显示)
             if isEditing && !isPreviewMode {
@@ -214,34 +260,37 @@ struct HomeDecorationView: View {
                     isEditing ? 
                     DragGesture(minimumDistance: 0) // 零延迟拖拽
                         .onChanged { value in
-                            if draggingContainerID == nil {
-                                draggingContainerID = container.id.uuidString
-                                // 拖拽开始时自动选中
-                                selectedContainerID = container.id.uuidString
+                            // 防误触机制：只有当前已选中的家具才允许移动
+                            if selectedContainerID == container.id.uuidString {
+                                if draggingContainerID == nil {
+                                    draggingContainerID = container.id.uuidString
+                                }
+                                dragOffset = value.translation
                             }
-                            dragOffset = value.translation
+                            // 如果未选中，什么都不做，等待 onEnded 判断是否为点击
                         }
                         .onEnded { value in
-                            // 判断位移距离，如果小于 5pt 且没有明显位移，视为点击
-                            if abs(value.translation.width) < 5 && abs(value.translation.height) < 5 {
-                                // 点击逻辑
-                                withAnimation {
-                                    // 如果之前是选中状态，且点击了同一个，则取消选中（或者保持选中，根据需求）
-                                    // 这里保留之前的逻辑：再次点击不取消，点击背景取消
-                                    selectedContainerID = container.id.uuidString
-                                }
-                            } else {
-                                // 拖拽结束逻辑
+                            if selectedContainerID == container.id.uuidString {
+                                // 已选中状态下的拖拽结束逻辑
                                 if draggingContainerID == container.id.uuidString {
-                                    // 更新模型坐标 (考虑缩放比例，位移需要除以 scale)
+                                    // 结算位移
                                     container.posX += value.translation.width / scale
                                     container.posY += value.translation.height / scale
                                 }
+                                
+                                // 重置状态
+                                draggingContainerID = nil
+                                dragOffset = .zero
+                            } else {
+                                // 未选中状态下的交互逻辑
+                                // 只有微小位移才视为“点击选中”
+                                // 大幅度位移视为“误触”或“试图滑动背景”，不执行任何选中或移动操作
+                                if abs(value.translation.width) < 5 && abs(value.translation.height) < 5 {
+                                    withAnimation {
+                                        selectedContainerID = container.id.uuidString
+                                    }
+                                }
                             }
-                            
-                            // 重置状态
-                            draggingContainerID = nil
-                            dragOffset = .zero
                         }
                     : nil
                 )
@@ -402,10 +451,29 @@ struct FurnitureBubbleMenu: View {
     var onSendToBack: () -> Void
     var onDelete: () -> Void
     
+    // 状态：是否显示造型选择器
+    @State private var showStyleSelector = false
+    
     var body: some View {
         VStack(spacing: 8) {
             // 1. 功能按钮行
             HStack(spacing: 16) {
+                // 更换造型
+                Button(action: {
+                    withAnimation {
+                        showStyleSelector.toggle()
+                    }
+                }) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "swatchpalette.fill")
+                            .font(.system(size: 14))
+                        Text("造型")
+                            .font(.system(size: 10))
+                    }
+                    .frame(width: 36)
+                }
+                .foregroundStyle(.primary)
+                
                 // 镜像
                 Button(action: {
                     withAnimation {
@@ -459,6 +527,35 @@ struct FurnitureBubbleMenu: View {
                 .foregroundStyle(.red)
             }
             
+            if showStyleSelector {
+                Divider()
+                
+                // 造型选择器
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        // 遍历所有可能的家具配置，找到名称匹配的作为候选
+                        // 简单的逻辑：列出所有家具配置供选择（或者根据名称过滤）
+                        // 这里为了演示，我们列出所有家具
+                        ForEach(FurnitureConfig.all) { config in
+                            Image(config.imageName)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 40, height: 40)
+                                .padding(4)
+                                .background(container.furnitureImageName == config.imageName ? Color.blue.opacity(0.2) : Color.clear)
+                                .cornerRadius(8)
+                                .onTapGesture {
+                                    withAnimation {
+                                        container.furnitureImageName = config.imageName
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                }
+                .frame(height: 50)
+            }
+            
             Divider()
             
             // 2. 缩放滑块
@@ -492,7 +589,7 @@ struct FurnitureBubbleMenu: View {
                 .offset(y: 8)
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 2)
         }
-        .frame(width: 260) // 固定宽度
+        .frame(width: 300) // 增加宽度以容纳更多按钮
     }
 }
 
