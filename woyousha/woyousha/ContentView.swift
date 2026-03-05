@@ -308,10 +308,7 @@ struct ContentView: View {
             }
             
             // 下方按钮：执行缩放 (原缩放按钮的位置)
-            circleIconButton(
-                systemName: "arrow.up.left.and.arrow.down.right",
-                buttonSize: buttonSize
-            ) {
+            Button(action: {
                 // 使用 DispatchQueue.main.async 延迟执行动画，避免在点击事件处理过程中直接触发布局更新
                 // 这有助于断开点击反馈动画与布局动画之间的耦合
                 DispatchQueue.main.async {
@@ -320,14 +317,32 @@ struct ContentView: View {
                         homeHeaderHeight = nextHeight
                     }
                 }
+            }) {
+                ZStack {
+                    // 大面板状态下的图标 (准备变小)
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .opacity(homeHeaderHeight == maxHeaderHeight ? 1 : 0)
+                    
+                    // 小面板状态下的图标 (准备变大)
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .opacity(homeHeaderHeight == maxHeaderHeight ? 0 : 1)
+                }
+                .foregroundStyle(.gray)
+                .frame(width: buttonSize, height: buttonSize)
+                .background(Color.white.opacity(0.9))
+                .clipShape(Circle())
+                .shadow(radius: 2)
             }
+            .buttonStyle(NoButtonFeedbackStyle())
         }
         .padding(.trailing, 16)
         .padding(.bottom, 16)
-        .overlay(
-            Rectangle()
-                .stroke(Color.red, lineWidth: showDebugBorders ? 2 : 0)
-        )
     }
     
     private func circleIconButton(systemName: String, buttonSize: CGFloat, action: @escaping () -> Void) -> some View {
@@ -341,10 +356,6 @@ struct ContentView: View {
                 .background(Color.white.opacity(0.9))
                 .clipShape(Circle())
                 .shadow(radius: 2)
-                .overlay(
-                    Circle()
-                        .stroke(Color.blue, lineWidth: showDebugBorders ? 2 : 0)
-                )
         }
         .buttonStyle(NoButtonFeedbackStyle())
     }
