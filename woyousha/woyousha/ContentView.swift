@@ -180,6 +180,28 @@ struct ContentView: View {
                     trashBinView
                 }
             }
+            .overlayPreferenceValue(HomeHeaderPreviewBoundsPreferenceKey.self) { anchor in
+                GeometryReader { proxy in
+                    let fallbackFrame = CGRect(x: 0, y: 0, width: proxy.size.width, height: homeHeaderHeight)
+                    let effectiveFrame = anchor.map { proxy[$0] } ?? fallbackFrame
+                    
+                    ZStack(alignment: .topLeading) {
+                        if showDebugBorders {
+                            Rectangle()
+                                .stroke(Color.green, lineWidth: 2)
+                                .frame(width: effectiveFrame.width, height: effectiveFrame.height)
+                                .position(x: effectiveFrame.midX, y: effectiveFrame.midY)
+                                .allowsHitTesting(false)
+                        }
+                        
+                        homeHeaderFloatingButtons(in: effectiveFrame)
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
+                }
+            }
         }
     }
     
@@ -193,6 +215,9 @@ struct ContentView: View {
     @State private var homeHeaderHeight: CGFloat = 420
     private let maxHeaderHeight: CGFloat = 420
     private let minHeaderHeight: CGFloat = 210
+    
+    @State private var isHomeHeaderMinimized = false
+    private let showDebugBorders = true
     
     // MARK: - Views
     
@@ -211,6 +236,7 @@ struct ContentView: View {
                 HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
             }
             .frame(height: homeHeaderHeight) // 使用动态高度
+            .anchorPreference(key: HomeHeaderPreviewBoundsPreferenceKey.self, value: .bounds) { $0 }
             // .background(Color.blue.opacity(0.05)) // 移除浅蓝色背景
             .onTapGesture {
                 // 点击整个区域也可以进入装修模式？或者只是预览交互
@@ -275,43 +301,6 @@ struct ContentView: View {
             // 高度切换按钮 (右下角)
             // 使用 overlay 实现，避免 VStack/HStack 的空白区域遮挡底层点击
         }
-        .overlay(alignment: .bottomTrailing) {
-            VStack(spacing: 12) {
-                // 定位复位按钮 (新增，样式与缩放按钮统一)
-                Button(action: {
-                    // 通知 HomeDecorationView 复位
-                    // 由于 HomeDecorationView 是内嵌的，我们需要一种方式通信
-                    // 简单起见，我们通过 NotificationCenter 发送通知
-                    NotificationCenter.default.post(name: .resetHomeView, object: nil)
-                }) {
-                    Image(systemName: "scope")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.gray)
-                        .padding(8)
-                        .background(Color.white.opacity(0.9))
-                        .clipShape(Circle())
-                        .shadow(radius: 2)
-                }
-                
-                Button(action: {
-                    // 使用 easeInOut 动画，速度更快，没有弹性
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        homeHeaderHeight = homeHeaderHeight == maxHeaderHeight ? minHeaderHeight : maxHeaderHeight
-                    }
-                }) {
-                    Image(systemName: homeHeaderHeight == maxHeaderHeight ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.gray)
-                        .padding(8)
-                        .background(Color.white.opacity(0.9))
-                        .clipShape(Circle())
-                        .shadow(radius: 2)
-                        // 移除了旋转动画，消除视觉上的延迟感
-                }
-            }
-            .padding(.trailing, 16)
-            .padding(.bottom, 16)
-        }
         // 2. 背景层：单独设置背景色并延伸到安全区域
         .background(
             Color.gray.opacity(0.1)
@@ -324,6 +313,75 @@ struct ContentView: View {
                 HomeDecorationView(isPreviewMode: false, isEditing: true, selectedContainerID: $selectedContainerID)
             }
         }
+    }
+
+    private func homeHeaderFloatingButtons(in effectiveFrame: CGRect) -> some View {
+        let buttonSize: CGFloat = 32
+        let spacing: CGFloat = 12
+        let trailingPadding: CGFloat = 16
+        let bottomPadding: CGFloat = 16
+        let stackWidth: CGFloat = buttonSize
+        let stackHeight: CGFloat = buttonSize * 2 + spacing
+        
+        return VStack(spacing: spacing) {
+            Button(action: {
+                NotificationCenter.default.post(name: .resetHomeView, object: nil)
+            }) {
+                Image(systemName: "scope")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+                    .foregroundStyle(.gray)
+                    .frame(width: buttonSize, height: buttonSize)
+                    .background(Color.white.opacity(0.9))
+                    .clipShape(Circle())
+                    .shadow(radius: 2)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.blue, lineWidth: showDebugBorders ? 2 : 0)
+                    )
+            }
+            .buttonStyle(.plain)
+            
+            Button(action: {
+                let nextIsMinimized = !isHomeHeaderMinimized
+                withTransaction(Transaction(animation: nil)) {
+                    isHomeHeaderMinimized = nextIsMinimized
+                    homeHeaderHeight = nextIsMinimized ? minHeaderHeight : maxHeaderHeight
+                }
+            }) {
+                ZStack {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .opacity(isHomeHeaderMinimized ? 0 : 1)
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .opacity(isHomeHeaderMinimized ? 1 : 0)
+                }
+                .animation(nil, value: isHomeHeaderMinimized)
+                .foregroundStyle(.gray)
+                .frame(width: 16, height: 16)
+                .frame(width: buttonSize, height: buttonSize)
+                .background(Color.white.opacity(0.9))
+                .clipShape(Circle())
+                .shadow(radius: 2)
+                .overlay(
+                    Circle()
+                        .stroke(Color.blue, lineWidth: showDebugBorders ? 2 : 0)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+        .overlay(
+            Rectangle()
+                .stroke(Color.red, lineWidth: showDebugBorders ? 2 : 0)
+        )
+        .position(
+            x: effectiveFrame.maxX - trailingPadding - (stackWidth / 2),
+            y: effectiveFrame.maxY - bottomPadding - (stackHeight / 2)
+        )
     }
     
     private var containerListView: some View {
@@ -882,6 +940,14 @@ struct ContainerTabItem: View {
                 isTargeted = targeted
             }
         }
+    }
+}
+
+private struct HomeHeaderPreviewBoundsPreferenceKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+    
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue()
     }
 }
 
