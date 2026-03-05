@@ -298,48 +298,39 @@ struct HomeDecorationView: View {
                 .position(x: container.posX + (draggingContainerID == container.id.uuidString ? dragOffset.width / scale : 0),
                           y: container.posY + (draggingContainerID == container.id.uuidString ? dragOffset.height / scale : 0))
                 .zIndex(Double(container.zIndex))
-                // 优化后的手势：合并拖拽和点击，解决拖拽延迟问题
+                // 优化后的手势：只有当家具被选中时才启用拖拽，否则允许点击穿透
                 .gesture(
-                    isEditing ? 
+                    // 仅当编辑模式且已选中该家具时，启用 DragGesture
+                    (isEditing && selectedContainerID == container.id.uuidString) ?
                     DragGesture(minimumDistance: 0) // 零延迟拖拽
                         .onChanged { value in
-                            // 防误触机制：只有当前已选中的家具才允许移动
-                            if selectedContainerID == container.id.uuidString {
-                                if draggingContainerID == nil {
-                                    draggingContainerID = container.id.uuidString
-                                }
-                                dragOffset = value.translation
+                            if draggingContainerID == nil {
+                                draggingContainerID = container.id.uuidString
                             }
-                            // 如果未选中，什么都不做，等待 onEnded 判断是否为点击
+                            dragOffset = value.translation
                         }
                         .onEnded { value in
-                            if selectedContainerID == container.id.uuidString {
-                                // 已选中状态下的拖拽结束逻辑
-                                if draggingContainerID == container.id.uuidString {
-                                    // 结算位移
-                                    container.posX += value.translation.width / scale
-                                    container.posY += value.translation.height / scale
-                                }
-                                
-                                // 重置状态
-                                draggingContainerID = nil
-                                dragOffset = .zero
-                            } else {
-                                // 未选中状态下的交互逻辑
-                                // 只有微小位移才视为“点击选中”
-                                // 大幅度位移视为“误触”或“试图滑动背景”，不执行任何选中或移动操作
-                                if abs(value.translation.width) < 5 && abs(value.translation.height) < 5 {
-                                    withAnimation {
-                                        selectedContainerID = container.id.uuidString
-                                    }
-                                }
+                            if draggingContainerID == container.id.uuidString {
+                                // 结算位移
+                                container.posX += value.translation.width / scale
+                                container.posY += value.translation.height / scale
                             }
+                            
+                            // 重置状态
+                            draggingContainerID = nil
+                            dragOffset = .zero
                         }
                     : nil
                 )
-                // 非编辑模式下的简单点击
+                // 非编辑模式或未选中状态下的点击逻辑
                 .onTapGesture {
-                    if !isEditing {
+                    if isEditing {
+                        // 编辑模式：点击切换选中状态
+                        withAnimation {
+                            selectedContainerID = (selectedContainerID == container.id.uuidString) ? nil : container.id.uuidString
+                        }
+                    } else {
+                        // 非编辑模式：也可以有简单的选中反馈，或者不做任何事
                         withAnimation {
                             selectedContainerID = (selectedContainerID == container.id.uuidString) ? nil : container.id.uuidString
                         }

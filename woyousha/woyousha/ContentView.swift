@@ -194,8 +194,6 @@ struct ContentView: View {
     private let maxHeaderHeight: CGFloat = 420
     private let minHeaderHeight: CGFloat = 210
     
-    private let showDebugBorders = true
-    
     // MARK: - Views
     
     private var homeHeaderView: some View {
