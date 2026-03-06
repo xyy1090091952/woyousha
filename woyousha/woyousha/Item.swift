@@ -54,6 +54,9 @@ final class Item {
         set { aiStatusRawValue = newValue.rawValue }
     }
     
+    // AI 请求开始时间 (用于超时判断)
+    var aiRequestDate: Date?
+    
     // 物品分类 (例如：衣服、工具、药品)
     // 存储时使用 rawValue (String)，但在代码逻辑中使用枚举类型
     // 注意：SwiftData 默认支持 Codable 枚举，但为了简单起见，我们也可以存 String

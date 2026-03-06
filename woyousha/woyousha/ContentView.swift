@@ -290,6 +290,8 @@ struct ContentView: View {
             Color.gray.opacity(0.1)
                 .ignoresSafeArea(edges: .top)
         )
+        // 确保 ZIndex 正确，避免被 containerListView 覆盖时出现背景穿透
+        .zIndex(0)
         // 全屏装修模式
         .fullScreenCover(isPresented: $showDecorationSheet) {
             NavigationStack {
@@ -336,9 +338,10 @@ struct ContentView: View {
                 }
                 .frame(width: buttonSize, height: buttonSize)
             }
+            .buttonStyle(NoButtonFeedbackStyle())
         }
         .padding(.trailing, 16)
-        .padding(.bottom, 16)
+        .padding(.bottom, 48) // 增加底部边距，避免被上方偏移的面板遮挡
     }
     
     // 封装圆形图标按钮
@@ -355,6 +358,7 @@ struct ContentView: View {
             }
             .frame(width: buttonSize, height: buttonSize)
         }
+        .buttonStyle(NoButtonFeedbackStyle())
     }
     
     private var containerListView: some View {
@@ -391,10 +395,22 @@ struct ContentView: View {
                 addContainerButton
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 16) // 增加一点垂直内边距，适应大圆角
         }
-        .background(Color.white) // 仅保留纯白背景，移除点阵以避免视觉冲突
+        .background(
+            Color.white
+                .clipShape(
+                    .rect(
+                        topLeadingRadius: 30,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: 30
+                    )
+                )
+                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: -4) // 添加一点向上阴影增强层次感
+        )
         .scrollClipDisabled()
+        .padding(.top, -24) // 向上偏移覆盖 Header，形成抽屉效果
     }
     
     // 拆分出单独的视图组件，解决 ViewBuilder 过于复杂的问题
@@ -499,13 +515,14 @@ struct ContentView: View {
     // 计算动态高度
     private var dynamicItemHeight: CGFloat {
         // 根据列数计算高度
-        // 2列 -> 180
-        // 3列 -> 150
-        // 4列 -> 120
-        // 5列 -> 90
-        // 公式：180 - (列数 - 2) * 30
-        let height = 180.0 - CGFloat(gridColumnCount - 2) * 30.0
-        return max(height, 80.0) // 最小高度 80
+        // 调整高度计算公式，使贴纸整体稍微变小
+        // 2列 -> 160 (原180)
+        // 3列 -> 132 (原150)
+        // 4列 -> 104 (原120)
+        // 5列 -> 76 (原90)
+        // 公式：160 - (列数 - 2) * 28
+        let height = 160.0 - CGFloat(gridColumnCount - 2) * 28.0
+        return max(height, 60.0) // 最小高度 60
     }
     
     private var itemsGridView: some View {
@@ -515,7 +532,7 @@ struct ContentView: View {
             if filteredItems.isEmpty {
                 emptyStateView
             } else {
-                LazyVGrid(columns: columns, spacing: 24) {
+                LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(filteredItems) { item in
                         // 如果在编辑模式，拦截点击事件用于选择
                         // 如果在浏览模式，使用 NavigationLink 进行跳转
@@ -836,7 +853,33 @@ struct ContentView: View {
         }
     }
     
+    private func checkAITimeout() {
+        let timeout: TimeInterval = 60 // 60秒超时
+        let now = Date()
+        var hasTimeoutItems = false
+        
+        for item in allItems {
+            if item.aiStatus == .processing || item.aiStatus == .pending {
+                // 优先使用 aiRequestDate，如果没有则回退到 updatedDate
+                let startTime = item.aiRequestDate ?? item.updatedDate
+                
+                if now.timeIntervalSince(startTime) > timeout {
+                    item.aiStatus = .failed
+                    hasTimeoutItems = true
+                    print("⚠️ 物品 \(item.name) (ID: \(item.id)) AI 识别超时，已重置为失败状态")
+                }
+            }
+        }
+        
+        if hasTimeoutItems {
+            try? modelContext.save()
+        }
+    }
+
     private func initializeDefaultContainers() {
+        // 每次进入首页都检查一次 AI 超时情况
+        checkAITimeout()
+        
         // 使用 UserDefaults 来检查是否已经初始化过
         let hasInitialized = UserDefaults.standard.bool(forKey: hasInitializedKey)
         

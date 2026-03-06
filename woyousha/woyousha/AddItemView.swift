@@ -274,6 +274,7 @@ struct AddItemView: View {
     private func analyzeImageInBackground(for item: Item, originalImage: UIImage) {
         // 设置状态为处理中
         item.aiStatus = .processing
+        item.aiRequestDate = Date()
         
         Task.detached(priority: .userInitiated) {
             do {
@@ -413,6 +414,7 @@ struct AddItemView: View {
             // 这样回到列表页就能立即看到 Loading
             if isAnalyzingImage {
                 newItem.aiStatus = .pending
+                newItem.aiRequestDate = Date()
             }
             
             modelContext.insert(newItem)

@@ -166,7 +166,7 @@ struct StickerGridItemView: View {
                 .zIndex(2) // 文字层级
         }
         .rotationEffect(.degrees(rotationAngle)) // 应用随机旋转
-        .padding()
+        .padding(8) // 减小默认内边距，使贴纸排列更紧凑
         // 移除 drawingGroup() 以修复缩放后的渲染问题（图片不更新、文字错乱）
         // .drawingGroup()
     }
