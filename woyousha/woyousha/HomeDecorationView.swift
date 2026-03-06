@@ -633,6 +633,16 @@ import UniformTypeIdentifiers
 struct FurnitureView: View {
     let container: Container
     let isSelected: Bool
+    // 添加绑定以更新选中的物品状态
+    // 注意：这里我们无法直接访问 ContentView 的 selectedItems 状态，因为它们是解耦的。
+    // 但是我们可以通过 NotificationCenter 发送通知，或者传入一个闭包。
+    // 鉴于架构解耦，使用 NotificationCenter 是比较轻量的方式，
+    // 或者我们假设 ContentView 会监听 draggingItems 的变化并自动清除选中态？
+    // 实际上 ContentView 的 onDragEnd 已经处理了 draggingItems.removeAll()
+    // 但 selectedItems 没有被清空。
+    
+    // 我们可以定义一个通知名称
+    static let didDropItemsNotification = Notification.Name("didDropItemsNotification")
     
     @Environment(\.modelContext) private var modelContext
     @State private var isTargeted = false
@@ -740,6 +750,9 @@ struct FurnitureView: View {
                         // 震动反馈
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
+                        
+                        // 发送通知，告知 ContentView 清空选中状态
+                        NotificationCenter.default.post(name: FurnitureView.didDropItemsNotification, object: nil)
                     }
                 }
             }

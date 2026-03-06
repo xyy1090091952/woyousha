@@ -96,6 +96,13 @@ struct ContentView: View {
                 baseColumnCount = CGFloat(gridColumnCount)
                 preciseColumnCount = CGFloat(gridColumnCount)
             }
+            // 监听拖拽完成通知，清空选中状态
+            .onReceive(NotificationCenter.default.publisher(for: FurnitureView.didDropItemsNotification)) { _ in
+                withAnimation {
+                    selectedItems.removeAll()
+                    draggingItems.removeAll() // 确保拖拽状态也清除
+                }
+            }
             .sheet(isPresented: $showAddSheet) {
                 // 如果当前选中的是具体容器，则默认选中该容器
                 if case .specific(let container) = selectedFilter {
@@ -474,17 +481,27 @@ struct ContentView: View {
             }
         }
         
+        var movedCount = 0
         for id in idsToProcess {
             if let item = allItems.first(where: { $0.id.uuidString == id }) {
                 withAnimation {
                     item.container = targetContainer
                     item.updatedDate = Date()
                 }
+                movedCount += 1
             }
+        }
+        
+        // 如果有移动，触发震动反馈
+        if movedCount > 0 {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
         }
         
         // 操作完成后清空选中状态
         selectedItems.removeAll()
+        // 确保拖拽状态也清除 (虽然 onDragEnd 也会清除，但这里是 Drop 成功的回调，双重保险)
+        draggingItems.removeAll()
     }
     
     // 计算动态高度
@@ -928,7 +945,14 @@ struct ContainerTabItem: View {
         }
         // 在这里处理 Drop，以便更新 isTargeted 状态
         .dropDestination(for: String.self) { items, location in
-            return onDrop(items)
+            // 解析可能的 ID 列表字符串
+            var allItems: [String] = []
+            for itemString in items {
+                let ids = itemString.split(separator: ",").map { String($0) }
+                allItems.append(contentsOf: ids)
+            }
+            
+            return onDrop(allItems)
         } isTargeted: { targeted in
             withAnimation {
                 isTargeted = targeted

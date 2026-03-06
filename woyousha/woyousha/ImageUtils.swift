@@ -80,7 +80,7 @@ struct ImageUtils {
         }
         return nil
         #else
-        return await Task.detached(priority: .userInitiated) { @MainActor in
+        return await Task.detached(priority: .userInitiated) {
             // 创建请求：生成前景实例掩码 (也就是抠图)
             let request = VNGenerateForegroundInstanceMaskRequest()
             let handler = VNImageRequestHandler(ciImage: ciImage)
