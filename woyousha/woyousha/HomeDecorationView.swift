@@ -490,6 +490,11 @@ struct FurnitureBubbleMenu: View {
     
     var body: some View {
         VStack(spacing: 8) {
+            // 显示容器名称
+            Text(container.name)
+                .font(.headline)
+                .padding(.bottom, 4)
+            
             // 1. 功能按钮行
             HStack(spacing: 16) {
                 // 更换造型

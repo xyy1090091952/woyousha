@@ -72,8 +72,6 @@ struct ContainerEditView: View {
                                         .font(.largeTitle)
                                         .foregroundStyle(selectedFurnitureImage == nil ? .white : .gray)
                                 }
-                                Text("默认")
-                                    .font(.caption)
                             }
                             .onTapGesture {
                                 withAnimation {
@@ -94,8 +92,6 @@ struct ContainerEditView: View {
                                             .scaledToFit()
                                             .frame(width: 60, height: 60)
                                     }
-                                    Text(config.name)
-                                        .font(.caption)
                                 }
                                 .onTapGesture {
                                     withAnimation {
