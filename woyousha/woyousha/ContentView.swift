@@ -778,28 +778,31 @@ struct ContentView: View {
     
     // 抽离删除逻辑
     private func handleDelete(items: [String]) {
-        let idsToProcess = Set(items)
         var itemsToDelete: Set<Item> = []
+        var allUUIDs: Set<UUID> = []
         
-        // 1. 如果拖拽的物品在选中列表中，则删除所有选中的物品
-        if !selectedItems.isEmpty {
-            let selectedIds = Set(selectedItems.map { $0.id.uuidString })
-            // 只要有一个拖拽的 ID 在选中列表中，就视为批量操作
-            if !idsToProcess.isDisjoint(with: selectedIds) {
-                itemsToDelete = selectedItems
-            }
-        }
-        
-        // 2. 如果没有触发批量操作（比如拖拽未选中的单个物品），则只删除拖拽的物品
-        if itemsToDelete.isEmpty {
-            for id in idsToProcess {
-                if let item = allItems.first(where: { $0.id.uuidString == id }) {
-                    itemsToDelete.insert(item)
+        // 1. 解析所有拖拽过来的 ID
+        // 注意：由于 customDraggable 可能会将多个 ID 拼成一个字符串 ("id1,id2")，
+        // 我们需要先进行拆分
+        for itemString in items {
+            let ids = itemString.split(separator: ",").map { String($0) }
+            for idStr in ids {
+                if let uuid = UUID(uuidString: idStr) {
+                    allUUIDs.insert(uuid)
                 }
             }
         }
         
-        // 执行删除
+        // 2. 根据解析出的 ID 查找对应的 Item 对象
+        // 遍历 allItems 查找匹配的 Item (虽然效率不是最优，但对于本地数据通常足够快)
+        // 或者使用 FetchDescriptor 按 ID 查询
+        for item in allItems {
+            if allUUIDs.contains(item.id) {
+                itemsToDelete.insert(item)
+            }
+        }
+        
+        // 3. 执行删除
         withAnimation {
             for item in itemsToDelete {
                 modelContext.delete(item)

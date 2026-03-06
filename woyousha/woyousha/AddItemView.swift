@@ -277,8 +277,11 @@ struct AddItemView: View {
         
         Task.detached(priority: .userInitiated) {
             do {
-                // 使用原图进行识别，效果可能更好
-                let result = try await DoubaoService.shared.analyzeImage(image: originalImage)
+                // 压缩原图，避免 Vision/豆包 API 处理过大图片导致内存飙升
+                let resizedImage = ImageUtils.resizeImage(originalImage, maxDimension: 1024)
+                
+                // 使用压缩后的图片进行识别
+                let result = try await DoubaoService.shared.analyzeImage(image: resizedImage)
                 
                 await MainActor.run {
                     // 更新物品信息
@@ -294,9 +297,27 @@ struct AddItemView: View {
                 await MainActor.run {
                     // 标记失败
                     item.aiStatus = .failed
-                    // 名称改为"识别失败" (可选，或者保持原名，只通过状态颜色区分)
-                    // item.name = "识别失败" 
-                    print("后台 AI 识别失败: \(error)")
+                    
+                    // 区分错误类型并打印日志，便于调试
+                    // 未来可以根据错误类型决定是否自动重试或在 UI 上显示具体错误信息
+                    if let analysisError = error as? DoubaoService.AnalysisError {
+                        switch analysisError {
+                        case .networkError(let netError):
+                            print("❌ 后台 AI 识别失败 (网络错误): \(netError.localizedDescription)")
+                        case .missingApiKey:
+                            print("❌ 后台 AI 识别失败 (API Key 缺失)")
+                        case .apiError(let msg):
+                            print("❌ 后台 AI 识别失败 (API 错误): \(msg)")
+                        case .invalidResponse, .decodingError:
+                             print("❌ 后台 AI 识别失败 (数据解析错误)")
+                        case .invalidImage:
+                             print("❌ 后台 AI 识别失败 (图片无效)")
+                        }
+                    } else {
+                        print("❌ 后台 AI 识别失败 (未知错误): \(error.localizedDescription)")
+                    }
+                    
+                    // 尝试保存上下文
                     try? modelContext.save()
                 }
             }
@@ -342,7 +363,21 @@ struct AddItemView: View {
     // 保存逻辑
     private func saveItem() {
         // 1. 处理图片数据
-        let imageData = selectedImage?.pngData()
+        // 关键优化：压缩图片以降低内存占用和存储空间
+        var imageData: Data? = nil
+        var thumbnailData: Data? = nil
+        
+        if let image = selectedImage {
+             // 再次确保图片尺寸合理 (虽然抠图过程可能已经压缩过，但为了安全起见)
+             // 1024px 对于贴纸展示已经足够清晰，能有效防止 OOM
+             let resized = ImageUtils.resizeImage(image, maxDimension: 1024)
+             imageData = resized.pngData()
+             
+             // 生成缩略图 (200px)
+             // 列表页加载 200px 的图片比加载 1024px 的原图快得多，且内存占用极低
+             let thumbnail = ImageUtils.resizeImage(image, maxDimension: 200)
+             thumbnailData = thumbnail.pngData()
+        }
         
         // 2. 准备 Item 对象
         let targetItem: Item
@@ -351,6 +386,7 @@ struct AddItemView: View {
             // --- 更新现有物品 ---
             item.name = name.isEmpty ? "未命名" : name
             item.imageData = imageData
+            item.thumbnailData = thumbnailData // 更新缩略图
             item.category = category
             item.quantity = quantity
             item.location = location
@@ -363,6 +399,7 @@ struct AddItemView: View {
             let newItem = Item(
                 name: name.isEmpty ? "新物品" : name, // 如果名字为空，先给个默认值
                 imageData: imageData,
+                thumbnailData: thumbnailData, // 保存缩略图
                 category: category,
                 quantity: quantity,
                 location: location,

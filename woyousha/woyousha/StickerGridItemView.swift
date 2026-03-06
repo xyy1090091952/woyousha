@@ -50,36 +50,67 @@ struct StickerGridItemView: View {
         return displayHeight
     }
     
+    // 提取 Loading Overlay 以复用
+    private var loadingOverlay: some View {
+        Group {
+            if item.aiStatus == .processing || item.aiStatus == .pending {
+                ProgressView()
+                    .controlSize(.regular)
+                    .tint(Color(white: 0.3)) // 深灰色，与文字一致
+                    .shadow(color: .white, radius: 0, x: 1, y: 1) // 白色描边模拟
+                    .shadow(color: .white, radius: 0, x: -1, y: -1)
+                    .shadow(color: .white, radius: 0, x: 1, y: -1)
+                    .shadow(color: .white, radius: 0, x: -1, y: 1)
+            }
+        }
+    }
+    
     var body: some View {
         VStack(spacing: -10) { // 负间距，让文字稍微往上贴一点，更有贴纸感
             // 图片区域
             ZStack(alignment: .topTrailing) {
-                if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
+                // 1. 优先尝试显示缩略图
+                if let thumbnailData = item.thumbnailData, let uiImage = UIImage(data: thumbnailData) {
                     let displayHeight = calculateDisplayHeight(for: uiImage)
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFit()
-                        // 使用 frame(width:height:) 约束，但只约束高度，宽度自适应
-                        // 注意：这里我们只设置高度，让宽度自适应，但高度是经过计算的
-                        // 或者更稳妥地，使用 frame(width:height:) 如果我们确信比例
                         .frame(height: displayHeight)
-                        // 强制 Image 在 height 变化时刷新
-                        .id("image-\(item.id)-\(height)")
-                        // 贴纸阴影：模拟微微翘起的效果
+                        .id("thumb-\(item.id)-\(height)")
                         .shadow(color: .black.opacity(0.15), radius: 3, x: 2, y: 3)
-                        // AI 处理中的 Loading 效果
                         .overlay {
-                            if item.aiStatus == .processing || item.aiStatus == .pending {
-                                ProgressView()
-                                    .controlSize(.regular)
-                                    .tint(Color(white: 0.3)) // 深灰色，与文字一致
-                                    .shadow(color: .white, radius: 0, x: 1, y: 1) // 白色描边模拟
-                                    .shadow(color: .white, radius: 0, x: -1, y: -1)
-                                    .shadow(color: .white, radius: 0, x: 1, y: -1)
-                                    .shadow(color: .white, radius: 0, x: -1, y: 1)
-                            }
+                            loadingOverlay
                         }
-                } else {
+                } 
+                // 2. 如果没有缩略图，但有原图，判断是否正在迁移中 (即是否应该等待缩略图生成)
+                // 这里的逻辑是：为了防止内存爆炸，我们不再轻易加载原图。
+                // 如果有原图但没缩略图，我们显示一个"加载中/生成中"的占位符，等待后台迁移任务完成。
+                // 除非原图本身就很小 (比如 < 100KB)，但我们很难在不加载 Data 的情况下知道大小。
+                // 所以稳妥起见，我们显示占位符。
+                else if item.imageData != nil {
+                    // 显示"生成中"占位符
+                    ZStack {
+                        Image(systemName: "photo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: height * 0.5)
+                            .foregroundStyle(.gray.opacity(0.3))
+                        
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.top, 30)
+                    }
+                    .frame(height: height) // 保持高度占位
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.5))
+                            .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                    )
+                    .id("generating-\(item.id)")
+                }
+                // 3. 既没缩略图也没原图 (纯文本物品)
+                else {
                     // 无图时的占位符，做成贴纸样式
                     Image(systemName: "cube.box.fill")
                         .resizable()
@@ -92,7 +123,6 @@ struct StickerGridItemView: View {
                                 .fill(Color.white)
                                 .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
                         )
-                        // 强制占位符在 height 变化时刷新
                         .id("placeholder-\(item.id)-\(height)")
                 }
                 

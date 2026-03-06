@@ -39,6 +39,10 @@ final class Item {
     // @Attribute(.externalStorage) 告诉系统如果图片很大，尽量存在外部文件中，不要把数据库撑爆
     @Attribute(.externalStorage) var imageData: Data?
     
+    // 缩略图数据 (用于列表页快速展示，不使用 externalStorage 以提高加载速度)
+    // 缩略图通常很小 (如 200x200)，适合直接存在数据库中
+    var thumbnailData: Data?
+    
     // 物品名称/描述 (例如：棕色羽绒服)
     var name: String
     
@@ -90,6 +94,7 @@ final class Item {
         id: UUID = UUID(),
         name: String = "新物品",
         imageData: Data? = nil,
+        thumbnailData: Data? = nil, // 新增参数
         category: Category = .other, // 默认分类改为枚举
         quantity: Int = 1,
         location: String = "未指定位置",
@@ -103,6 +108,7 @@ final class Item {
         self.id = id
         self.name = name
         self.imageData = imageData
+        self.thumbnailData = thumbnailData // 赋值
         self.categoryRawValue = category.rawValue // 存储 rawValue
         self.quantity = quantity
         self.location = location

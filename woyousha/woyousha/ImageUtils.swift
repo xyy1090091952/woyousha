@@ -12,23 +12,60 @@ import CoreImage.CIFilterBuiltins
 
 /// 图像处理工具类
 /// 负责处理图片的 AI 抠图、描边等操作
+@MainActor
 struct ImageUtils {
+    
+    // 共享 CIContext，避免重复创建带来的内存和性能开销
+    // 禁用颜色管理以提高性能
+    private static let context = CIContext(options: [.workingColorSpace: NSNull()])
+    
+    /// 压缩图片尺寸 (Downsampling)
+    /// - Parameters:
+    ///   - image: 原图
+    ///   - maxDimension: 最大边长 (默认 1024)
+    /// - Returns: 压缩后的图片
+    nonisolated static func resizeImage(_ image: UIImage, maxDimension: CGFloat = 1024) -> UIImage {
+        let size = image.size
+        let aspectRatio = size.width / size.height
+        
+        // 如果图片本身就很小，直接返回
+        if max(size.width, size.height) <= maxDimension {
+            return image
+        }
+        
+        var newSize: CGSize
+        if size.width > size.height {
+            newSize = CGSize(width: maxDimension, height: maxDimension / aspectRatio)
+        } else {
+            newSize = CGSize(width: maxDimension * aspectRatio, height: maxDimension)
+        }
+        
+        // 使用 UIGraphicsImageRenderer 进行重绘 (高质量缩放)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
     
     /// 移除图片背景 (AI 抠图)
     /// - Parameter inputImage: 输入的原始图片
     /// - Returns: 移除背景后的透明背景图片
-    @MainActor
     static func removeBackground(from inputImage: UIImage) async -> UIImage? {
+        // 0. 预处理：压缩图片
+        // 抠图前先压缩，可以显著降低 Vision 和 Core Image 的内存占用
+        // 1024px 对于贴纸展示已经足够清晰
+        let resizedImage = resizeImage(inputImage, maxDimension: 1024)
+        
         // 1. 转换为 CIImage (Core Image 的标准格式)
-        guard let ciImage = CIImage(image: inputImage) else { return nil }
+        guard let ciImage = CIImage(image: resizedImage) else { return nil }
         
         // 2. 检查是否支持 iOS 17 的新 API
         if #available(iOS 17.0, *) {
-            return await removeBackgroundNew(ciImage: ciImage, originalOrientation: inputImage.imageOrientation)
+            return await removeBackgroundNew(ciImage: ciImage, originalOrientation: resizedImage.imageOrientation)
         } else {
             // 旧版本暂不支持，原样返回 (或者可以使用 CoreML 模型，但比较重)
             print("⚠️ 系统版本低于 iOS 17，暂不支持自动抠图")
-            return inputImage
+            return resizedImage
         }
     }
     
@@ -38,13 +75,12 @@ struct ImageUtils {
         // 提前检测模拟器环境，避免无效请求
         #if targetEnvironment(simulator)
         print("⚠️ 检测到模拟器环境，Vision 抠图不支持，已自动降级为原图")
-        let context = CIContext()
         if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
             return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
         }
         return nil
         #else
-        return await Task.detached(priority: .userInitiated) {
+        return await Task.detached(priority: .userInitiated) { @MainActor in
             // 创建请求：生成前景实例掩码 (也就是抠图)
             let request = VNGenerateForegroundInstanceMaskRequest()
             let handler = VNImageRequestHandler(ciImage: ciImage)
@@ -69,8 +105,7 @@ struct ImageUtils {
                 
                 guard let outputCIImage = filter.outputImage else { return nil }
                 
-                // 转换为 UIImage
-                let context = CIContext()
+                // 转换为 UIImage (使用共享 Context)
                 guard let cgImage = context.createCGImage(outputCIImage, from: outputCIImage.extent) else { return nil }
                 
                 return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
@@ -78,7 +113,6 @@ struct ImageUtils {
                 print("❌ 抠图失败: \(error)")
                 
                 // 将 CIImage 转回 UIImage 并返回
-                let context = CIContext()
                 if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
                     return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
                 }
@@ -157,10 +191,8 @@ struct ImageUtils {
         guard let finalOutput = compositeFilter.outputImage else { return nil }
         
         // 5. 自动裁剪 (Auto Crop)：切掉四周多余的透明区域
-        // 创建上下文 (禁用颜色管理以提高性能)
-        let context = CIContext(options: [.workingColorSpace: NSNull()])
         
-        // 渲染到 CGImage
+        // 渲染到 CGImage (使用共享 Context)
         // 注意：CIImage 的 extent 可能是无限的或偏移的，这里我们需要计算实际内容的 extent
         // 描边会增加图片尺寸，我们需要确保渲染区域包含描边
         let outputExtent = finalOutput.extent
