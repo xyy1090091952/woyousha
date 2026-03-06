@@ -105,15 +105,23 @@ struct ImageUtils {
                 
                 guard let outputCIImage = filter.outputImage else { return nil }
                 
-                // 转换为 UIImage (使用共享 Context)
-                guard let cgImage = context.createCGImage(outputCIImage, from: outputCIImage.extent) else { return nil }
+                // 在后台线程创建临时的 CIContext
+                // 因为 ImageUtils.context 绑定在 MainActor，无法在 detached task 中安全访问
+                // 禁用颜色管理以提高性能
+                let tempContext = CIContext(options: [.workingColorSpace: NSNull()])
+                
+                // 转换为 UIImage
+                guard let cgImage = tempContext.createCGImage(outputCIImage, from: outputCIImage.extent) else { return nil }
                 
                 return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
             } catch {
                 print("❌ 抠图失败: \(error)")
                 
+                // 即使失败也需要创建 context 来转换图片
+                let tempContext = CIContext(options: [.workingColorSpace: NSNull()])
+                
                 // 将 CIImage 转回 UIImage 并返回
-                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+                if let cgImage = tempContext.createCGImage(ciImage, from: ciImage.extent) {
                     return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
                 }
                 return nil

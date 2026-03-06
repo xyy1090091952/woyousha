@@ -67,8 +67,17 @@ struct HomeDecorationView: View {
                 .navigationTitle(isEditing ? "装修模式" : "我的家")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: {
+                            dismiss()
+                        }) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.black)
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button(isEditing ? "完成" : "装修") {
+                        Button(action: {
                             if isEditing {
                                 dismiss()
                             } else {
@@ -76,6 +85,10 @@ struct HomeDecorationView: View {
                                     isEditing.toggle()
                                 }
                             }
+                        }) {
+                            Text(isEditing ? "完成" : "装修")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.black)
                         }
                     }
                 }
@@ -212,11 +225,12 @@ struct HomeDecorationView: View {
                     Spacer()
                     HStack {
                         Spacer()
+                        // 2. 复位按钮
                         Button(action: {
-                            withAnimation {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                                 scale = 1.0
-                                lastScale = 1.0
                                 offset = .zero
+                                lastScale = 1.0
                                 lastOffset = .zero
                                 
                                 // 复位存储的状态
@@ -225,13 +239,16 @@ struct HomeDecorationView: View {
                                 storedOffsetY = 0.0
                             }
                         }) {
-                            Image(systemName: "scope")
-                                .font(.title2)
-                                .foregroundStyle(.primary)
-                                .padding(12)
-                                .background(.regularMaterial)
-                                .clipShape(Circle())
-                                .shadow(radius: 4)
+                            ZStack {
+                                Circle()
+                                    .fill(.white.opacity(0.9))
+                                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                                
+                                Image(systemName: "scope")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.black)
+                            }
+                            .frame(width: 32, height: 32)
                         }
                         .padding(.trailing, 20)
                         .padding(.bottom, 180)
@@ -244,15 +261,17 @@ struct HomeDecorationView: View {
                 VStack {
                     HStack {
                         Spacer()
+                        
                         Picker("房间风格", selection: $currentRoomImage) {
                             Text("风格 1").tag("home1")
                             Text("风格 2").tag("home2")
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 200)
-                        .padding()
+                        
                         Spacer()
                     }
+                    .padding(.top, 16) // 顶部间距
                     Spacer()
                 }
             }
@@ -263,6 +282,10 @@ struct HomeDecorationView: View {
                     Spacer()
                     furnitureDrawer
                         .transition(.move(edge: .bottom))
+                        // 完全移除外部阴影，避免"重"的感觉
+                        // 如果需要区分层级，furnitureDrawer 内部的背景色或圆角已经足够
+                        // 或者使用极其微弱的描边
+                        // .shadow(color: .black.opacity(0.03), radius: 6, x: 0, y: -3)
                 }
             }
         }
@@ -394,7 +417,8 @@ struct HomeDecorationView: View {
         .background(.ultraThinMaterial)
         .cornerRadius(20)
         .padding()
-        .shadow(radius: 10)
+        // 弱化仓库面板的投影强度
+        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 0)
     }
     
     // 层级管理函数
@@ -683,7 +707,10 @@ struct FurnitureView: View {
                     .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 2, y: -2)
                     .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: -2, y: 2)
                     // 再加一层外阴影增强立体感
-                    .shadow(color: (isSelected || isTargeted) ? .black.opacity(0.15) : .clear, radius: 4, x: 0, y: 2)
+                    // 移除或减弱这个阴影，因为它可能导致视觉上的"重"感
+                    // 如果这是为了表现选中态，可以保留；如果为了表现家具本身的立体感，应该由图片自带阴影负责
+                    // 鉴于用户反馈"投影太重"，我们移除这个额外的黑色阴影，只保留白边作为选中提示
+                    // .shadow(color: (isSelected || isTargeted) ? .black.opacity(0.15) : .clear, radius: 4, x: 0, y: 2)
             } else {
                 // 降级视图
                 VStack {

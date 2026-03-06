@@ -232,13 +232,12 @@ struct ContentView: View {
                 if !isEditing {
                     Button(action: { showAddSheet = true }) {
                         Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.8))
+                            .font(.system(size: 16, weight: .semibold)) // 调整为 semibold
+                            .foregroundStyle(.black)
+                            .frame(width: 44, height: 40) // 高度从 36 增加到 40，与其他按钮匹配
+                            .background(Color.white.opacity(0.9))
                             .clipShape(Capsule())
-                            .shadow(radius: 2)
+                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                     }
                     .transition(.opacity)
                 }
@@ -250,13 +249,13 @@ struct ContentView: View {
                     showDecorationSheet = true
                 }) {
                     Label("装修", systemImage: "hammer.fill")
-                        .font(.subheadline)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10) // 增加垂直内边距，使高度更大
                         .background(Color.white.opacity(0.9))
                         .clipShape(Capsule())
-                        .shadow(radius: 2)
-                        .foregroundStyle(.purple)
+                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                 }
                 .padding(.trailing, 8)
                 
@@ -267,13 +266,14 @@ struct ContentView: View {
                         selectedItems.removeAll()
                     }
                 }) {
-                    Text(isEditing ? "完成" : "编辑列表")
-                        .font(.subheadline)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.8))
+                    Text(isEditing ? "完成" : "编辑")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10) // 增加垂直内边距，使高度更大
+                        .background(Color.white.opacity(0.9))
                         .clipShape(Capsule())
-                        .shadow(radius: 2)
+                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                 }
             }
             .padding(.horizontal, 16)
@@ -324,45 +324,37 @@ struct ContentView: View {
                 }
             }) {
                 ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.9))
+                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    
                     // 大面板状态下的图标 (准备变小)
                     Image(systemName: "arrow.down.right.and.arrow.up.left")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 16, height: 16)
-                        .opacity(homeHeaderHeight == maxHeaderHeight ? 1 : 0)
-                    
-                    // 小面板状态下的图标 (准备变大)
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 16, height: 16)
-                        .opacity(homeHeaderHeight == maxHeaderHeight ? 0 : 1)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .rotationEffect(.degrees(homeHeaderHeight == maxHeaderHeight ? 0 : 180))
                 }
-                .foregroundStyle(.gray)
                 .frame(width: buttonSize, height: buttonSize)
-                .background(Color.white.opacity(0.9))
-                .clipShape(Circle())
-                .shadow(radius: 2)
             }
-            .buttonStyle(NoButtonFeedbackStyle())
         }
         .padding(.trailing, 16)
         .padding(.bottom, 16)
     }
     
+    // 封装圆形图标按钮
     private func circleIconButton(systemName: String, buttonSize: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 16, height: 16)
-                .foregroundStyle(.gray)
-                .frame(width: buttonSize, height: buttonSize)
-                .background(Color.white.opacity(0.9))
-                .clipShape(Circle())
-                .shadow(radius: 2)
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                
+                Image(systemName: systemName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.black)
+            }
+            .frame(width: buttonSize, height: buttonSize)
         }
-        .buttonStyle(NoButtonFeedbackStyle())
     }
     
     private var containerListView: some View {
