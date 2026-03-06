@@ -67,19 +67,18 @@ struct AddItemView: View {
                                     
                                     // AI 处理中的 Loading 遮罩
                                     if isProcessingImage || isAnalyzingImage {
-                                        ZStack {
-                                            Color.black.opacity(0.3)
-                                                .cornerRadius(12)
-                                            VStack {
-                                                ProgressView()
-                                                    .tint(.white)
-                                                Text(isProcessingImage ? "AI 抠图中..." : "AI 识别中...")
-                                                    .font(.caption)
-                                                    .foregroundStyle(.white)
-                                                    .padding(.top, 4)
-                                            }
+                                        VStack {
+                                            ProgressView()
+                                                .controlSize(.large)
+                                                .tint(.white)
+                                            Text(isProcessingImage ? "AI 抠图中..." : "AI 识别中...")
+                                                .font(.headline)
+                                                .foregroundStyle(.white)
+                                                .padding(.top, 8)
                                         }
-                                        .frame(height: 200)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .background(Color.black.opacity(0.6))
+                                        .cornerRadius(12)
                                     }
                                 }
                                 .overlay(alignment: .topTrailing) {
@@ -271,65 +270,64 @@ struct AddItemView: View {
         }
     }
     
-    // 调用豆包 AI 识别图片
-    private func analyzeImage() {
-        guard let image = selectedImage else { return }
+    // 调用豆包 AI 识别图片 (改为后台任务)
+    private func analyzeImageInBackground(for item: Item, originalImage: UIImage) {
+        // 设置状态为处理中
+        item.aiStatus = .processing
         
-        isAnalyzingImage = true
-        
-        Task {
+        Task.detached(priority: .userInitiated) {
             do {
-                let result = try await DoubaoService.shared.analyzeImage(image: image)
+                // 使用原图进行识别，效果可能更好
+                let result = try await DoubaoService.shared.analyzeImage(image: originalImage)
+                
                 await MainActor.run {
-                    // 自动填充识别结果
+                    // 更新物品信息
                     withAnimation {
-                        self.name = result.name
-                        self.category = result.category
+                        item.name = result.name
+                        item.category = result.category
+                        item.aiStatus = .success
                     }
-                    isAnalyzingImage = false
+                    // 尝试保存上下文
+                    try? modelContext.save()
                 }
             } catch {
                 await MainActor.run {
-                    isAnalyzingImage = false
-                    print("AI 识别失败: \(error)")
-                    // 优化错误提示，区分网络错误
-                    if let error = error as? DoubaoService.AnalysisError, case .networkError = error {
-                        errorMessage = "网络连接失败，请检查网络后重试"
-                    } else {
-                        errorMessage = "AI 识别失败，请手动输入"
-                    }
-                    // 只有在用户显式需要反馈时才弹窗，或者使用更轻量的 Toast
-                    // 这里为了不打断自动流程，我们选择只在控制台打印，或者使用一个不阻断的 Toast
-                    // 但目前的架构是 Alert，所以我们先保持 Alert，但让文案更友好
-                    showErrorAlert = true
+                    // 标记失败
+                    item.aiStatus = .failed
+                    // 名称改为"识别失败" (可选，或者保持原名，只通过状态颜色区分)
+                    // item.name = "识别失败" 
+                    print("后台 AI 识别失败: \(error)")
+                    try? modelContext.save()
                 }
             }
         }
     }
     
-    // AI 抠图逻辑
+    // AI 抠图逻辑 (修改为支持提前保存)
     private func removeBackground() {
         guard let inputImage = selectedImage else { return }
         isProcessingImage = true
+        // 重置状态
+        isAnalyzingImage = false
         
         Task {
             // 调用 ImageUtils 进行抠图
             if let outputImage = await ImageUtils.removeBackground(from: inputImage) {
                 await MainActor.run {
                     // 添加白色描边 (可选)
+                    let finalImage: UIImage
                     if let borderedImage = ImageUtils.addWhiteBorder(to: outputImage) {
-                         selectedImage = borderedImage
+                         finalImage = borderedImage
                     } else {
-                         selectedImage = outputImage
+                         finalImage = outputImage
                     }
+                    selectedImage = finalImage
                     isProcessingImage = false
                     
-                    // 抠图完成后，自动触发 AI 识别
-                    // 使用处理后的图片（其实最好用原图，但这里为了流程简单先用当前图，
-                    // 或者我们应该在抠图开始前就并行做识别？
-                    // 考虑到识别需要原图细节可能更好，但抠图后的主体更明确。
-                    // 这里我们选择在抠图成功后，自动调用 analyzeImage
-                    analyzeImage()
+                    // 优化：抠图完成后立即进入"识别中"状态
+                    // 这样用户即使不点击保存，也能看到状态变化
+                    // 如果用户点击保存，saveItem 会接管这个状态并启动后台任务
+                    isAnalyzingImage = true
                 }
             } else {
                 await MainActor.run {
@@ -344,25 +342,27 @@ struct AddItemView: View {
     // 保存逻辑
     private func saveItem() {
         // 1. 处理图片数据
-        // 关键修复：使用 pngData() 以保留透明通道 (Alpha Channel)
-        // jpegData 会自动把透明背景填充为白色，导致抠图效果失效
         let imageData = selectedImage?.pngData()
+        
+        // 2. 准备 Item 对象
+        let targetItem: Item
         
         if let item = itemToEdit {
             // --- 更新现有物品 ---
-            item.name = name
+            item.name = name.isEmpty ? "未命名" : name
             item.imageData = imageData
             item.category = category
             item.quantity = quantity
             item.location = location
             item.note = note
             item.container = selectedContainer
-            item.updatedDate = Date() // 更新时间为当前时间
+            item.updatedDate = Date()
+            targetItem = item
         } else {
             // --- 创建新物品 ---
             let newItem = Item(
-                name: name,
-                imageData: imageData, // 保存图片
+                name: name.isEmpty ? "新物品" : name, // 如果名字为空，先给个默认值
+                imageData: imageData,
                 category: category,
                 quantity: quantity,
                 location: location,
@@ -371,16 +371,32 @@ struct AddItemView: View {
                 note: note,
                 container: selectedContainer
             )
+            
+            // 如果抠图已完成且处于识别等待状态，设置初始状态为 pending
+            // 这样回到列表页就能立即看到 Loading
+            if isAnalyzingImage {
+                newItem.aiStatus = .pending
+            }
+            
             modelContext.insert(newItem)
+            targetItem = newItem
         }
         
-        // 3. 提交事务
+        // 3. 触发后台 AI 识别 (如果是新图片且未识别)
+        // 只要有图片且名字是默认值/空的，我们就尝试识别
+        // 这里不需要再判断 isProcessingImage，因为只有抠图完成后用户才能点击保存（或者我们允许处理中保存？）
+        // 假设 selectedImage 已经包含足够特征用于识别
+        if let imageToAnalyze = selectedImage {
+            // 如果名字没填，或者显式需要识别
+            if name.isEmpty || name == "新物品" {
+                // 启动后台识别任务
+                analyzeImageInBackground(for: targetItem, originalImage: imageToAnalyze)
+            }
+        }
+        
+        // 4. 提交事务
         do {
-            // 尝试保存上下文以确保数据持久化
-            // 虽然 SwiftData 通常会自动保存，但显式保存可以捕获错误
             try modelContext.save()
-            
-            // 4. 关闭页面
             dismiss()
         } catch {
             print("❌ 保存物品失败: \(error)")

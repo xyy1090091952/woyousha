@@ -20,13 +20,31 @@ struct ItemDetailView: View {
                 if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
                     HStack {
                         Spacer()
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 350)
-                            // 恢复普通投影，因为我们已经生成了带白边的图片
-                            .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 4)
-                            .padding(10) // 给阴影留出空间
+                        ZStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxHeight: 350)
+                                // 恢复普通投影，因为我们已经生成了带白边的图片
+                                .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 4)
+                                .padding(10) // 给阴影留出空间
+                            
+                            // AI 处理状态 Tooltip
+                            if item.aiStatus == .processing || item.aiStatus == .pending {
+                                VStack {
+                                    ProgressView()
+                                        .controlSize(.large)
+                                        .tint(.white)
+                                    Text("AI 识别中...")
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                        .padding(.top, 8)
+                                }
+                                .padding(20)
+                                .background(Color.black.opacity(0.6))
+                                .cornerRadius(12)
+                            }
+                        }
                         Spacer()
                     }
                     .padding(.top, 10)
@@ -111,8 +129,15 @@ struct ItemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("编辑") {
-                    showEditSheet = true
+                // 仅当 AI 处理完成或无需处理时才允许编辑
+                // 避免用户修改正在被后台任务更新的数据
+                if item.aiStatus == .processing || item.aiStatus == .pending {
+                    ProgressView()
+                        .padding(.trailing, 8)
+                } else {
+                    Button("编辑") {
+                        showEditSheet = true
+                    }
                 }
             }
         }

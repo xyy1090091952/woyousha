@@ -67,6 +67,18 @@ struct StickerGridItemView: View {
                         .id("image-\(item.id)-\(height)")
                         // 贴纸阴影：模拟微微翘起的效果
                         .shadow(color: .black.opacity(0.15), radius: 3, x: 2, y: 3)
+                        // AI 处理中的 Loading 效果
+                        .overlay {
+                            if item.aiStatus == .processing || item.aiStatus == .pending {
+                                ProgressView()
+                                    .controlSize(.regular)
+                                    .tint(Color(white: 0.3)) // 深灰色，与文字一致
+                                    .shadow(color: .white, radius: 0, x: 1, y: 1) // 白色描边模拟
+                                    .shadow(color: .white, radius: 0, x: -1, y: -1)
+                                    .shadow(color: .white, radius: 0, x: 1, y: -1)
+                                    .shadow(color: .white, radius: 0, x: -1, y: 1)
+                            }
+                        }
                 } else {
                     // 无图时的占位符，做成贴纸样式
                     Image(systemName: "cube.box.fill")
@@ -106,11 +118,11 @@ struct StickerGridItemView: View {
             
             // 文字区域 (贴纸风格：深灰字 + 白色粗描边 + 阴影)
             // 使用单个 Text + 多个 Shadow 模拟描边，彻底解决多行文字布局不一致的问题
-            Text(item.name)
+            Text(item.aiStatus == .processing || item.aiStatus == .pending ? "识别中..." : item.name)
                 .font(.system(size: 16, weight: .heavy, design: .rounded))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .foregroundStyle(Color(white: 0.3))
+                .foregroundStyle(item.aiStatus == .failed ? Color.orange : Color(white: 0.3))
                 // 使用 shadow 模拟白色描边
                 .shadow(color: .white, radius: 0, x: 1.5, y: 1.5)
                 .shadow(color: .white, radius: 0, x: -1.5, y: -1.5)
@@ -118,6 +130,7 @@ struct StickerGridItemView: View {
                 .shadow(color: .white, radius: 0, x: -1.5, y: 1.5)
                 .shadow(color: .white, radius: 1, x: 0, y: 0) // 增加一点柔和度
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 1, y: 1) // 投影
+                .opacity((item.aiStatus == .processing || item.aiStatus == .pending) ? 0.6 : 1.0)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 4)
                 .zIndex(2) // 文字层级

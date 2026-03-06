@@ -19,6 +19,14 @@ enum Category: String, CaseIterable, Codable {
     case other = "其他"
 }
 
+enum AIProcessingStatus: String, Codable {
+    case pending = "pending"       // 等待处理
+    case processing = "processing" // 处理中
+    case success = "success"       // 处理成功
+    case failed = "failed"         // 处理失败
+    case none = "none"             // 无需处理/默认状态
+}
+
 // @Model 是 SwiftData 的核心标记，告诉系统这个类需要被存储到数据库中
 // 类似于 Web 开发中的 ORM 模型定义 (比如 TypeORM 的 @Entity)
 @Model
@@ -33,6 +41,14 @@ final class Item {
     
     // 物品名称/描述 (例如：棕色羽绒服)
     var name: String
+    
+    // AI 处理状态
+    var aiStatusRawValue: String = AIProcessingStatus.none.rawValue
+    
+    var aiStatus: AIProcessingStatus {
+        get { AIProcessingStatus(rawValue: aiStatusRawValue) ?? .none }
+        set { aiStatusRawValue = newValue.rawValue }
+    }
     
     // 物品分类 (例如：衣服、工具、药品)
     // 存储时使用 rawValue (String)，但在代码逻辑中使用枚举类型
@@ -81,7 +97,8 @@ final class Item {
         updatedDate: Date = Date(), // 默认更新时间也是当前时间
         expirationDate: Date? = nil,
         note: String = "",
-        container: Container? = nil
+        container: Container? = nil,
+        aiStatus: AIProcessingStatus = .none
     ) {
         self.id = id
         self.name = name
@@ -94,5 +111,6 @@ final class Item {
         self.expirationDate = expirationDate
         self.note = note
         self.container = container
+        self.aiStatusRawValue = aiStatus.rawValue
     }
 }
