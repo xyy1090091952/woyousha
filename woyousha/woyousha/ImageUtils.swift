@@ -93,12 +93,14 @@ struct ImageUtils {
     ///   - image: 输入的透明背景图片
     ///   - thickness: 描边宽度
     /// - Returns: 带描边的图片
-    static func addWhiteBorder(to image: UIImage, thickness: CGFloat = 25) -> UIImage? {
+    static func addWhiteBorder(to image: UIImage, thickness: CGFloat = 12) -> UIImage? {
         guard let cgImage = image.cgImage else { return nil }
         let ciImage = CIImage(cgImage: cgImage)
         
-        // 动态计算描边厚度：基于图片宽度，例如宽度的 3%
-        let dynamicThickness = max(thickness, ciImage.extent.width * 0.03)
+        // 优化点 b: 使用固定的描边厚度，而不是基于图片尺寸的动态厚度
+        // 这样可以确保无论图片大小如何，生成的贴纸描边粗细都是一致的
+        // 12pt 是一个经验值，在移动端显示效果较好
+        let fixedThickness = thickness
         
         // --- 新版贴纸描边算法 (Smooth Sticker Effect) ---
         
@@ -106,42 +108,63 @@ struct ImageUtils {
         // 将原图的 Alpha 通道放大并截断，使半透明区域变全不透明，
         // 同时将 RGB 通道设为全白 (1,1,1)。
         // 这样可以处理原图边缘半透明或内部有半透明像素导致的描边断裂问题。
+        // 优化：增强 Alpha 二值化的强度，确保即使是很淡的像素也能生成描边
+        let alphaBoostFilter = CIFilter.colorMatrix()
+        alphaBoostFilter.inputImage = ciImage
+        alphaBoostFilter.aVector = CIVector(x: 0, y: 0, z: 0, w: 1000) // 极大增强 Alpha
+        guard let boostedAlpha = alphaBoostFilter.outputImage else { return nil }
+        
+        // 生成纯白遮罩
         let solidMaskFilter = CIFilter.colorMatrix()
-        solidMaskFilter.inputImage = ciImage
-        solidMaskFilter.rVector = CIVector(x: 0, y: 0, z: 0, w: 0)
-        solidMaskFilter.gVector = CIVector(x: 0, y: 0, z: 0, w: 0)
-        solidMaskFilter.bVector = CIVector(x: 0, y: 0, z: 0, w: 0)
-        solidMaskFilter.aVector = CIVector(x: 0, y: 0, z: 0, w: 100) // 放大 Alpha，使其变为 0 或 1
-        solidMaskFilter.biasVector = CIVector(x: 1, y: 1, z: 1, w: 0) // RGB 设为白色
+        solidMaskFilter.inputImage = boostedAlpha
+        solidMaskFilter.rVector = CIVector(x: 0, y: 0, z: 0, w: 0) // R = 0
+        solidMaskFilter.gVector = CIVector(x: 0, y: 0, z: 0, w: 0) // G = 0
+        solidMaskFilter.bVector = CIVector(x: 0, y: 0, z: 0, w: 0) // B = 0
+        solidMaskFilter.aVector = CIVector(x: 0, y: 0, z: 0, w: 1) // A = 1
+        solidMaskFilter.biasVector = CIVector(x: 1, y: 1, z: 1, w: 0) // R,G,B + 1 = White
         
         guard let solidMask = solidMaskFilter.outputImage else { return nil }
         
-        // 2. 圆形膨胀 (Circular Dilation)
+        // 2. 圆形膨胀 (Circular Dilation) - 优化点 a: 边缘圆滑
         // 使用 MorphologyMaximum (圆形) 替代 RectangleMaximum (矩形)
         // 解决边缘锯齿和方块感，使描边圆润平滑。
+        // 注意：MorphologyMaximum 比较消耗性能，如果图片过大可能会慢
         let dilateFilter = CIFilter.morphologyMaximum()
         dilateFilter.inputImage = solidMask
-        dilateFilter.radius = Float(dynamicThickness)
+        dilateFilter.radius = Float(fixedThickness)
         guard let dilatedMask = dilateFilter.outputImage else { return nil }
         
-        // 3. 平滑处理 (Smoothing)
-        // 添加轻微的高斯模糊，消除膨胀带来的像素边缘，使贴纸边缘更自然
+        // 3. 平滑处理 (Smoothing) - 优化点 a: 边缘圆滑
+        // 添加适量的高斯模糊，消除膨胀带来的像素边缘，使贴纸边缘更自然
+        // 然后再进行一次 Alpha 阈值截断，使模糊边缘变清晰但圆润
         let smoothFilter = CIFilter.gaussianBlur()
         smoothFilter.inputImage = dilatedMask
-        smoothFilter.radius = 2.0
+        smoothFilter.radius = Float(fixedThickness / 3.0) // 模糊半径与描边厚度成比例
         guard let smoothedMask = smoothFilter.outputImage else { return nil }
         
+        // 再次二值化，使模糊的边缘变实心
+        let hardEdgeFilter = CIFilter.colorMatrix()
+        hardEdgeFilter.inputImage = smoothedMask
+        hardEdgeFilter.aVector = CIVector(x: 0, y: 0, z: 0, w: 50) // 增强 Alpha
+        guard let hardSmoothedMask = hardEdgeFilter.outputImage else { return nil }
+        
         // 4. 合成：原图在上，白色描边在下
+        // 使用 sourceOverCompositing 将原图叠加在生成的白色描边上
         let compositeFilter = CIFilter.sourceOverCompositing()
         compositeFilter.inputImage = ciImage
-        compositeFilter.backgroundImage = smoothedMask
+        compositeFilter.backgroundImage = hardSmoothedMask
         
         guard let finalOutput = compositeFilter.outputImage else { return nil }
         
         // 5. 自动裁剪 (Auto Crop)：切掉四周多余的透明区域
-        let context = CIContext()
+        // 创建上下文 (禁用颜色管理以提高性能)
+        let context = CIContext(options: [.workingColorSpace: NSNull()])
         
-        guard let finalCGImage = context.createCGImage(finalOutput, from: finalOutput.extent) else { return nil }
+        // 渲染到 CGImage
+        // 注意：CIImage 的 extent 可能是无限的或偏移的，这里我们需要计算实际内容的 extent
+        // 描边会增加图片尺寸，我们需要确保渲染区域包含描边
+        let outputExtent = finalOutput.extent
+        guard let finalCGImage = context.createCGImage(finalOutput, from: outputExtent) else { return nil }
         
         // 重新创建 UIImage
         let resultImage = UIImage(cgImage: finalCGImage, scale: image.scale, orientation: image.imageOrientation)
