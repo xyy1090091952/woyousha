@@ -627,10 +627,17 @@ struct FurnitureBubbleMenu: View {
     }
 }
 
+import SwiftUI
+import SwiftData
+import UniformTypeIdentifiers
+
 // 单个家具视图
 struct FurnitureView: View {
     let container: Container
     let isSelected: Bool
+    
+    @Environment(\.modelContext) private var modelContext
+    @State private var isTargeted = false
     
     var furnitureConfig: FurnitureConfig? {
         if let imageName = container.furnitureImageName,
@@ -654,16 +661,16 @@ struct FurnitureView: View {
                     .frame(width: width)
                     .scaleEffect(x: container.isMirrored ? -1 : 1, y: 1) // 镜像
                     // 选中状态：添加贴纸描边效果
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: 2, y: 0)
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: -2, y: 0)
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: 0, y: 2)
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: 0, y: -2)
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: 2, y: 2)
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: -2, y: -2)
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: 2, y: -2)
-                    .shadow(color: isSelected ? .white : .clear, radius: 0, x: -2, y: 2)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 2, y: 0)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: -2, y: 0)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 0, y: 2)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 0, y: -2)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 2, y: 2)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 2, x: -2, y: -2)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 2, y: -2)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: -2, y: 2)
                     // 再加一层外阴影增强立体感
-                    .shadow(color: isSelected ? .black.opacity(0.15) : .clear, radius: 4, x: 0, y: 2)
+                    .shadow(color: (isSelected || isTargeted) ? .black.opacity(0.15) : .clear, radius: 4, x: 0, y: 2)
             } else {
                 // 降级视图
                 VStack {
@@ -680,7 +687,61 @@ struct FurnitureView: View {
                         .cornerRadius(4)
                 }
                 .scaleEffect(container.scale)
-                .shadow(color: isSelected ? .blue : .clear, radius: 5)
+                .shadow(color: (isSelected || isTargeted) ? .blue : .clear, radius: 5)
+            }
+        }
+        // 高亮时的 Tooltip
+        .overlay(alignment: .top) {
+            if isTargeted {
+                Text("移动到 \(container.name)")
+                    .font(.system(size: 12, weight: .bold)) // 统一字号
+                    .foregroundStyle(.white) // 统一白色文字
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.black.opacity(0.8)) // 统一深色背景
+                            .shadow(radius: 2)
+                    )
+                    .lineLimit(1) // 强制单行
+                    .fixedSize() // 强制适应内容大小
+                    .offset(y: -50) // 向上偏移更多
+                    .zIndex(999) // 确保在最上层
+                    .transition(.opacity)
+            }
+        }
+        // 支持 Drop 操作
+        .dropDestination(for: String.self) { items, location in
+            // items 是 UUID 字符串数组
+            Task {
+                var droppedCount = 0
+                for uuidString in items {
+                    if let uuid = UUID(uuidString: uuidString) {
+                        await MainActor.run {
+                            let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == uuid })
+                            if let item = try? modelContext.fetch(descriptor).first {
+                                // 移动 Item 到当前 Container
+                                item.container = container
+                                droppedCount += 1
+                            }
+                        }
+                    }
+                }
+                
+                // 如果有移动，保存上下文
+                if droppedCount > 0 {
+                    await MainActor.run {
+                        try? modelContext.save()
+                        // 震动反馈
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                    }
+                }
+            }
+            return true
+        } isTargeted: { targeted in
+            withAnimation {
+                isTargeted = targeted
             }
         }
     }
