@@ -523,7 +523,17 @@ struct ContentView: View {
                             }
                             // 支持拖拽 (自定义，移除系统背景和阴影)
                             .customDraggable(
-                                itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) },
+                                itemProvider: {
+                                    // 检查是否在多选中，如果是，则提供所有选中物品的 ID
+                                    if selectedItems.contains(item) {
+                                        // 我们修改策略：传递所有 ID 的 JSON 数组字符串
+                                        // 我们可以把所有 ID 拼成一个字符串 "id1,id2,id3"
+                                        let allIDs = selectedItems.map { $0.id.uuidString }.joined(separator: ",")
+                                        return NSItemProvider(object: allIDs as NSString)
+                                    } else {
+                                        return NSItemProvider(object: item.id.uuidString as NSString)
+                                    }
+                                },
                                 onDragStart: {
                                     // 立即设置拖拽状态，这会触发 scrollDisabled
                                     DispatchQueue.main.async {
@@ -585,7 +595,14 @@ struct ContentView: View {
                             .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
                             // 支持拖拽 (自定义，移除系统背景和阴影)
                             .customDraggable(
-                                itemProvider: { NSItemProvider(object: item.id.uuidString as NSString) },
+                                itemProvider: {
+                                    if selectedItems.contains(item) {
+                                        let allIDs = selectedItems.map { $0.id.uuidString }.joined(separator: ",")
+                                        return NSItemProvider(object: allIDs as NSString)
+                                    } else {
+                                        return NSItemProvider(object: item.id.uuidString as NSString)
+                                    }
+                                },
                                 onDragStart: {
                                     // 立即设置拖拽状态，这会触发 scrollDisabled
                                     DispatchQueue.main.async {

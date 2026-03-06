@@ -627,8 +627,6 @@ struct FurnitureBubbleMenu: View {
     }
 }
 
-import SwiftUI
-import SwiftData
 import UniformTypeIdentifiers
 
 // 单个家具视图
@@ -666,7 +664,7 @@ struct FurnitureView: View {
                     .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 0, y: 2)
                     .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 0, y: -2)
                     .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 2, y: 2)
-                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 2, x: -2, y: -2)
+                    .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: -2, y: -2)
                     .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: 2, y: -2)
                     .shadow(color: (isSelected || isTargeted) ? .white : .clear, radius: 0, x: -2, y: 2)
                     // 再加一层外阴影增强立体感
@@ -713,16 +711,23 @@ struct FurnitureView: View {
         // 支持 Drop 操作
         .dropDestination(for: String.self) { items, location in
             // items 是 UUID 字符串数组
+            // 注意：我们之前修改了 customDraggable 传递逻辑，可能会传递 "id1,id2,id3" 这样的字符串
+            // 所以我们需要先拆分
             Task {
                 var droppedCount = 0
-                for uuidString in items {
-                    if let uuid = UUID(uuidString: uuidString) {
-                        await MainActor.run {
-                            let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == uuid })
-                            if let item = try? modelContext.fetch(descriptor).first {
-                                // 移动 Item 到当前 Container
-                                item.container = container
-                                droppedCount += 1
+                for itemString in items {
+                    // 尝试按逗号拆分，处理多选情况
+                    let uuidStrings = itemString.split(separator: ",").map { String($0) }
+                    
+                    for uuidString in uuidStrings {
+                        if let uuid = UUID(uuidString: uuidString) {
+                            await MainActor.run {
+                                let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == uuid })
+                                if let item = try? modelContext.fetch(descriptor).first {
+                                    // 移动 Item 到当前 Container
+                                    item.container = container
+                                    droppedCount += 1
+                                }
                             }
                         }
                     }
