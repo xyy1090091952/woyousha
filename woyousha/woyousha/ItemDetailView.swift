@@ -150,17 +150,8 @@ struct ItemDetailView: View {
     }
     
     private func checkTimeout() {
-        // 检查是否超时 (60秒)
-        if item.aiStatus == .processing || item.aiStatus == .pending {
-            let timeout: TimeInterval = 60
-            // 优先使用 aiRequestDate，如果没有则回退到 updatedDate
-            let startTime = item.aiRequestDate ?? item.updatedDate
-            
-            if Date().timeIntervalSince(startTime) > timeout {
-                item.aiStatus = .failed
-                // 无需手动 save，SwiftData 会自动处理，或者在退出时保存
-            }
-        }
+        // 检查并处理超时
+        _ = item.checkAITimeout()
     }
 }
 

@@ -122,4 +122,20 @@ final class Item {
         self.container = container
         self.aiStatusRawValue = aiStatus.rawValue
     }
+    
+    // 检查并重置超时的 AI 状态
+    // 返回值：如果状态被重置了，返回 true；否则返回 false
+    func checkAITimeout(timeout: TimeInterval = 60) -> Bool {
+        if aiStatus == .processing || aiStatus == .pending {
+            // 优先使用 aiRequestDate，如果没有则回退到 updatedDate
+            let startTime = aiRequestDate ?? updatedDate
+            
+            if Date().timeIntervalSince(startTime) > timeout {
+                aiStatus = .failed
+                print("⚠️ 物品 \(name) (ID: \(id)) AI 识别超时，已重置为失败状态")
+                return true
+            }
+        }
+        return false
+    }
 }

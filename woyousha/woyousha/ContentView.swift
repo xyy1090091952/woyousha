@@ -854,20 +854,11 @@ struct ContentView: View {
     }
     
     private func checkAITimeout() {
-        let timeout: TimeInterval = 60 // 60秒超时
-        let now = Date()
         var hasTimeoutItems = false
         
         for item in allItems {
-            if item.aiStatus == .processing || item.aiStatus == .pending {
-                // 优先使用 aiRequestDate，如果没有则回退到 updatedDate
-                let startTime = item.aiRequestDate ?? item.updatedDate
-                
-                if now.timeIntervalSince(startTime) > timeout {
-                    item.aiStatus = .failed
-                    hasTimeoutItems = true
-                    print("⚠️ 物品 \(item.name) (ID: \(item.id)) AI 识别超时，已重置为失败状态")
-                }
+            if item.checkAITimeout() {
+                hasTimeoutItems = true
             }
         }
         
