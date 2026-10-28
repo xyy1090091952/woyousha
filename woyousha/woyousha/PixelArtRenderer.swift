@@ -8,7 +8,9 @@ nonisolated enum PixelArtRenderer {
     static let roomHeight = 368
     static let roomPixelScale = 1.5
     static let furniturePixelScale = 2.0
-    static let spritePadding = 4.0
+    // 普通/选中共用画布，四周预留轮廓空间，切换选中不会改变大小或位置。
+    static let selectionOutlineRadius = 6.0
+    static let spritePadding = selectionOutlineRadius + 2
     static let roomProjection = IsoProjection(scale:roomPixelScale,origin:CGPoint(x:224,y:136))
 
     static func furniture(id: String, mirrored: Bool = false) -> CGImage? {
@@ -23,6 +25,21 @@ nonisolated enum PixelArtRenderer {
 
     static func furnitureBounds(id: String) -> CGRect {
         bounds(of:IsometricFurniture.model(id))
+    }
+
+    static func decoration(kind: RoomDecoration.Kind, style: String, mirrored: Bool = false) -> CGImage? {
+        let original = IsometricDecoration.model(kind,style:style)
+        let model = mirrored ? original.exchangingAxes() : original
+        let box = bounds(of:model)
+        let projection = IsoProjection(scale:furniturePixelScale,
+                                       origin:CGPoint(x:spritePadding-box.minX,y:spritePadding-box.minY))
+        return IsoRasterizer.render(model,width:Int(ceil(box.width+spritePadding*2)),
+                                    height:Int(ceil(box.height+spritePadding*2)),projection:projection)
+    }
+
+    static func decorationBounds(kind: RoomDecoration.Kind, mirrored: Bool = false) -> CGRect {
+        let original = IsometricDecoration.model(kind,style:"home1")
+        return bounds(of:mirrored ? original.exchangingAxes() : original)
     }
 
     private static func bounds(of model: IsoMesh) -> CGRect {

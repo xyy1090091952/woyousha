@@ -7,19 +7,23 @@ import Observation
 @MainActor @Observable
 final class ItemEditorModel {
     enum PhotoState {
-        case empty, loading, processing, ready, original
+        case empty, loading, separating, finishing, ready, original, unmodified
     }
 
     var draft: ItemDraft
     private(set) var image: UIImage?
     private(set) var photoState: PhotoState = .empty
+    private(set) var processingIsTakingLong = false
     private(set) var isSaving = false
     var errorMessage: String?
 
     private let item: Item?
-    private var photoTask: Task<Void, Never>?
-    private var photoRevision = UUID()
-    private var imageChanged = false
+    @ObservationIgnored private var photoTask: Task<Void, Never>?
+    @ObservationIgnored private var feedbackTask: Task<Void, Never>?
+    @ObservationIgnored private var photoRevision = UUID()
+    @ObservationIgnored private var originalImage: UIImage?
+    @ObservationIgnored private var previousPhotoState: PhotoState = .empty
+    @ObservationIgnored private var imageChanged = false
 
     init(item: Item?, defaultContainer: Container?) {
         self.item = item
@@ -28,7 +32,10 @@ final class ItemEditorModel {
         if image != nil { photoState = .ready }
     }
 
-    var isProcessing: Bool { photoState == .loading || photoState == .processing }
+    var isProcessing: Bool {
+        photoState == .loading || photoState == .separating || photoState == .finishing
+    }
+    var canKeepOriginalPhoto: Bool { isProcessing && originalImage != nil }
     var canSave: Bool {
         !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isProcessing && !isSaving
     }
@@ -37,35 +44,48 @@ final class ItemEditorModel {
         switch photoState {
         case .empty: return "照片选填，拍照后会自动制作贴纸"
         case .loading: return "正在读取照片…"
-        case .processing: return "正在制作贴纸…"
+        case .separating: return "正在分离物品主体…"
+        case .finishing: return "正在生成贴纸白边…"
         case .ready: return "照片已准备好"
         case .original: return "暂时无法分离主体，已保留原图"
+        case .unmodified: return "已保留原图，可以继续填写并保存"
         }
     }
 
     func selectPhoto(_ selection: PhotosPickerItem?) {
         guard let selection else { return }
         let revision = beginPhotoChange()
-        photoState = .loading
         photoTask = Task {
             do {
-                guard let data = try await selection.loadTransferable(type: Data.self),
-                      let loadedImage = UIImage(data: data) else {
-                    throw PhotoError.unreadable
+                guard let data = try await selection.loadTransferable(type: Data.self) else {
+                    throw ItemPhotoProcessor.ProcessingError.unreadable
                 }
                 guard isCurrent(revision) else { return }
-                await process(loadedImage, revision: revision)
+                await process(.data(data), revision: revision)
             } catch {
                 guard isCurrent(revision) else { return }
-                photoState = image == nil ? .empty : .ready
-                errorMessage = "无法读取这张照片，请重新选择。"
+                finishUnreadablePhoto()
             }
         }
     }
 
+    func selectCameraData(_ data: Data) {
+        let revision = beginPhotoChange()
+        photoTask = Task { await process(.data(data), revision: revision) }
+    }
+
     func selectCameraImage(_ image: UIImage) {
         let revision = beginPhotoChange()
-        photoTask = Task { await process(image, revision: revision) }
+        photoTask = Task { await process(.image(image), revision: revision) }
+    }
+
+    /// 用户可以结束等待；取消运算后保存同一张照片的原图，不丢失表单草稿。
+    func keepOriginalPhoto() {
+        guard canKeepOriginalPhoto, let originalImage else { return }
+        cancelPhotoTask()
+        image = originalImage
+        imageChanged = true
+        photoState = .unmodified
     }
 
     func removePhoto() {
@@ -80,8 +100,18 @@ final class ItemEditorModel {
     func cancelPhotoTask() {
         photoTask?.cancel()
         photoTask = nil
+        stopSlowFeedback()
         photoRevision = UUID()
-        if isProcessing { photoState = image == nil ? .empty : (imageChanged ? .original : .ready) }
+        if isProcessing {
+            if let originalImage {
+                image = originalImage
+                imageChanged = true
+                photoState = .unmodified
+            } else {
+                photoState = image == nil ? .empty : previousPhotoState
+            }
+        }
+        originalImage = nil
     }
 
     func save(in context: ModelContext) async -> Bool {
@@ -116,6 +146,15 @@ final class ItemEditorModel {
 
     private func beginPhotoChange() -> UUID {
         cancelPhotoTask()
+        previousPhotoState = photoState
+        photoState = .loading
+        let revision = photoRevision
+        // 只改变提示，不编造进度百分比，也不靠延时掩盖实际处理速度。
+        feedbackTask = Task {
+            try? await Task.sleep(for: .seconds(PhotoProcessingSettings.slowFeedbackDelay))
+            guard isCurrent(revision), isProcessing else { return }
+            processingIsTakingLong = true
+        }
         return photoRevision
     }
 
@@ -123,29 +162,43 @@ final class ItemEditorModel {
         !Task.isCancelled && revision == photoRevision
     }
 
-    private func process(_ input: UIImage, revision: UUID) async {
+    private func process(_ source: ItemPhotoProcessor.Source, revision: UUID) async {
         guard isCurrent(revision) else { return }
-        photoState = .processing
-        let resized = await Task.detached(priority: .userInitiated) {
-            ImageUtils.resizeImage(input)
-        }.value
-        guard isCurrent(revision) else { return }
-        image = resized
-        imageChanged = true
-        let cutout = await ImageUtils.removeBackground(from: resized)
-        guard isCurrent(revision) else { return }
-        if let cutout {
-            let sticker = await Task.detached(priority: .userInitiated) {
-                ImageUtils.addWhiteBorder(to: cutout) ?? cutout
-            }.value
+        do {
+            let result = try await ItemPhotoProcessor.process(source) { [weak self] stage, preview in
+                guard let self, self.isCurrent(revision) else { return }
+                self.image = preview
+                self.imageChanged = true
+                switch stage {
+                case .separating:
+                    self.originalImage = preview
+                    self.photoState = .separating
+                case .finishing:
+                    self.photoState = .finishing
+                }
+            }
             guard isCurrent(revision) else { return }
-            image = sticker
-            photoState = .ready
-        } else {
-            image = resized
-            photoState = .original
+            image = result.image
+            imageChanged = true
+            photoState = result.separated ? .ready : .original
+            originalImage = nil
+            stopSlowFeedback()
+        } catch {
+            guard isCurrent(revision) else { return }
+            finishUnreadablePhoto()
         }
     }
 
-    private enum PhotoError: Error { case unreadable }
+    private func finishUnreadablePhoto() {
+        stopSlowFeedback()
+        originalImage = nil
+        photoState = image == nil ? .empty : previousPhotoState
+        errorMessage = "无法读取这张照片，请重新选择。"
+    }
+
+    private func stopSlowFeedback() {
+        feedbackTask?.cancel()
+        feedbackTask = nil
+        processingIsTakingLong = false
+    }
 }

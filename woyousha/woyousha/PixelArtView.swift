@@ -4,7 +4,10 @@ import SwiftUI
 @MainActor
 private enum PixelArtCache {
     static var furniture: [String: CGImage] = [:]
+    static var furnitureOutlines: [String: CGImage] = [:]
     static var rooms: [String: CGImage] = [:]
+    static var decorations: [String: CGImage] = [:]
+    static var decorationOutlines: [String: CGImage] = [:]
 
     static func image(id: String, isRoom: Bool, mirrored: Bool = false) -> CGImage? {
         if isRoom {
@@ -19,14 +22,45 @@ private enum PixelArtCache {
         furniture[key] = image
         return image
     }
+
+    static func furnitureOutline(id: String, mirrored: Bool) -> CGImage? {
+        let key = id + (mirrored ? "-mirrored" : "")
+        if let cached = furnitureOutlines[key] { return cached }
+        guard let source = image(id: id, isRoom: false, mirrored: mirrored),
+              let outlined = AlphaOutlineRenderer.outlined(source, radius: PixelArtRenderer.selectionOutlineRadius) else { return nil }
+        furnitureOutlines[key] = outlined
+        return outlined
+    }
+
+    static func decoration(kind: RoomDecoration.Kind, style: String, mirrored: Bool) -> CGImage? {
+        let key = kind.rawValue + style + (mirrored ? "-mirror" : "")
+        if let image = decorations[key] { return image }
+        let image = PixelArtRenderer.decoration(kind:kind,style:style,mirrored:mirrored)
+        decorations[key] = image
+        return image
+    }
+
+    static func decorationOutline(kind: RoomDecoration.Kind, style: String, mirrored: Bool) -> CGImage? {
+        let key = kind.rawValue + style + (mirrored ? "-mirror" : "")
+        if let cached = decorationOutlines[key] { return cached }
+        guard let source = decoration(kind: kind, style: style, mirrored: mirrored),
+              let outlined = AlphaOutlineRenderer.outlined(source, radius: PixelArtRenderer.selectionOutlineRadius) else { return nil }
+        decorationOutlines[key] = outlined
+        return outlined
+    }
 }
 
 struct PixelFurnitureView: View {
     let styleID: String
     var isMirrored = false
+    var showsOutline = false
 
     var body: some View {
-        if let image = PixelArtCache.image(id: styleID, isRoom: false, mirrored: isMirrored) {
+        let original = PixelArtCache.image(id: styleID, isRoom: false, mirrored: isMirrored)
+        let image = showsOutline
+            ? (PixelArtCache.furnitureOutline(id: styleID, mirrored: isMirrored) ?? original)
+            : original
+        if let image {
             Image(decorative: image, scale: 1)
                 .resizable()
                 .interpolation(.none)
@@ -44,6 +78,45 @@ struct PixelRoomView: View {
                 .interpolation(.none)
                 .aspectRatio(CGFloat(PixelArtRenderer.roomWidth) / CGFloat(PixelArtRenderer.roomHeight), contentMode: .fit)
         }
+    }
+}
+
+struct PixelDecorationView: View {
+    let kind: RoomDecoration.Kind
+    var roomStyle = "home1"
+    var mirrored = false
+    var showsOutline = false
+    var body: some View {
+        let original = PixelArtCache.decoration(kind: kind, style: roomStyle, mirrored: mirrored)
+        let image = showsOutline
+            ? (PixelArtCache.decorationOutline(kind: kind, style: roomStyle, mirrored: mirrored) ?? original)
+            : original
+        if let image {
+            Image(decorative:image,scale:1)
+                .resizable().interpolation(.none)
+                .aspectRatio(CGFloat(image.width)/CGFloat(image.height),contentMode:.fit)
+        }
+    }
+}
+
+struct DecorationPlacementView: View {
+    let decoration: RoomDecoration
+    let roomStyle: String
+    var isSelected = false
+    var scaleOverride: Double?
+
+    var body: some View {
+        let image = PixelArtCache.decoration(kind:decoration.kind,style:roomStyle,mirrored:decoration.isMirrored)
+        let bounds = PixelArtRenderer.decorationBounds(kind:decoration.kind,mirrored:decoration.isMirrored)
+        let factor = RoomConfig.roomWidth / Double(PixelArtRenderer.roomWidth)
+            * PixelArtRenderer.roomPixelScale / PixelArtRenderer.furniturePixelScale
+            * (scaleOverride ?? decoration.scale)
+        PixelDecorationView(kind:decoration.kind,roomStyle:roomStyle,mirrored:decoration.isMirrored,showsOutline:isSelected)
+            .frame(width:Double(image?.width ?? 1)*factor,height:Double(image?.height ?? 1)*factor)
+            .contentShape(Rectangle())
+            // 模型以地面接触点或墙面锚点放置，而不是按位图中心放置。
+            .offset(x:bounds.midX*factor,y:bounds.midY*factor)
+            .accessibilityLabel(decoration.name)
     }
 }
 

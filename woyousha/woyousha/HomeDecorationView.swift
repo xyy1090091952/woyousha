@@ -25,6 +25,17 @@ struct HomeDecorationView: View {
     @State private var dragOffset: CGSize = .zero
     @State private var previewScale: Double?
     @State private var errorMessage: String?
+    @State private var decorationStore = RoomDecorationStore.shared
+    @State private var selectedDecorationID: String?
+    @State private var draggingDecorationID: String?
+    @State private var decorationDragOffset: CGSize = .zero
+    @State private var decorationScalePreview: Double?
+    @State private var drawerCategory = DrawerCategory.furniture
+
+    private enum DrawerCategory: String, CaseIterable {
+        case furniture = "家具"
+        case decorations = "装饰物"
+    }
 
     init(isPreviewMode: Bool = false, isEditing: Bool = false, selectedContainerID: Binding<String?> = .constant(nil)) {
         self.isPreviewMode = isPreviewMode
@@ -34,6 +45,9 @@ struct HomeDecorationView: View {
 
     private var selectedContainer: Container? {
         containers.first { $0.id.uuidString == selectedContainerID && $0.isPlaced }
+    }
+    private var selectedDecoration: RoomDecoration? {
+        decorationStore.decorations.first { $0.id == selectedDecorationID && $0.isPlaced }
     }
 
     var body: some View {
@@ -66,7 +80,13 @@ struct HomeDecorationView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if isEditing {
                         ScrollView {
-                            if let container = selectedContainer {
+                            if let decoration = selectedDecoration {
+                                DecorationInspector(decoration:decoration,roomStyle:currentRoomImage,
+                                    onAction:{ performDecoration($0,id:decoration.id) },
+                                    onPreviewScale:{ decorationScalePreview=$0 },
+                                    onClose:{ selectedDecorationID=nil })
+                                    .id(decoration.id)
+                            } else if let container = selectedContainer {
                                 FurnitureInspector(container: container, onAction: { action in
                                     perform(action, on: container)
                                 }, onPreviewScale: { previewScale = $0 }, onClose: {
@@ -99,7 +119,14 @@ struct HomeDecorationView: View {
         }
         .tint(AppTheme.accent)
         .onAppear { restoreViewport() }
-        .onChange(of: selectedContainerID) { _, _ in previewScale = nil }
+        .onChange(of: selectedContainerID) { _, id in
+            previewScale = nil
+            if id != nil { selectedDecorationID = nil }
+        }
+        .onChange(of: selectedDecorationID) { _, id in
+            decorationScalePreview = nil
+            if id != nil { selectedContainerID = nil }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .resetHomeView)) { _ in resetViewport() }
         .alert("布置没有保存", isPresented: Binding(
             get: { errorMessage != nil },
@@ -149,6 +176,36 @@ struct HomeDecorationView: View {
                             selectedContainerID = selectedContainerID == container.id.uuidString ? nil : container.id.uuidString
                         }
                 }
+                ForEach(decorationStore.decorations.filter(\.isPlaced)) { decoration in
+                    DecorationPlacementView(decoration:decoration,roomStyle:currentRoomImage,
+                        isSelected:isEditing && selectedDecorationID==decoration.id,
+                        scaleOverride:selectedDecorationID==decoration.id ? decorationScalePreview:nil)
+                        .position(
+                            x:decoration.posX+(draggingDecorationID==decoration.id ? decorationDragOffset.width/effectiveScale:0),
+                            y:decoration.posY+(draggingDecorationID==decoration.id ? decorationDragOffset.height/effectiveScale:0))
+                        .zIndex(decoration.kind.isFloorCovering ? -950:Double(decoration.zIndex))
+                        .gesture(
+                            isEditing && selectedDecorationID==decoration.id ?
+                            DragGesture(minimumDistance:3)
+                                .onChanged { value in
+                                    draggingDecorationID=decoration.id
+                                    decorationDragOffset=value.translation
+                                }
+                                .onEnded { value in
+                                    _=performDecoration(.move(
+                                        decoration.posX+value.translation.width/effectiveScale,
+                                        decoration.posY+value.translation.height/effectiveScale),id:decoration.id)
+                                    decorationDragOffset = .zero
+                                    DispatchQueue.main.async { draggingDecorationID=nil }
+                                }:nil
+                        )
+                        .onTapGesture {
+                            guard isEditing else { return }
+                            selectedContainerID=nil
+                            selectedDecorationID=selectedDecorationID==decoration.id ? nil:decoration.id
+                        }
+                        .allowsHitTesting(isEditing)
+                }
             }
             .frame(width: RoomConfig.roomWidth, height: RoomConfig.roomHeight)
             .scaleEffect(effectiveScale)
@@ -159,12 +216,12 @@ struct HomeDecorationView: View {
             SimultaneousGesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { value in
-                        guard draggingContainerID == nil else { return }
+                        guard draggingContainerID == nil && draggingDecorationID == nil else { return }
                         offset = CGSize(width: lastOffset.width + value.translation.width,
                                         height: lastOffset.height + value.translation.height)
                     }
                     .onEnded { _ in
-                        guard draggingContainerID == nil else { return }
+                        guard draggingContainerID == nil && draggingDecorationID == nil else { return }
                         lastOffset = offset
                         storedOffsetX = offset.width
                         storedOffsetY = offset.height
@@ -180,13 +237,42 @@ struct HomeDecorationView: View {
 
     private var furnitureDrawer: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Picker("布置类别",selection:$drawerCategory) {
+                ForEach(DrawerCategory.allCases,id:\.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented)
             HStack {
-                Text("待布置的家具").font(.system(.headline, design: .rounded, weight: .heavy))
+                Text(drawerCategory == .furniture ? "待布置的家具":"装饰物")
+                    .font(.system(.headline, design: .rounded, weight: .heavy))
                 Spacer()
                 Text("轻点放入房间").font(.caption).foregroundStyle(AppTheme.secondaryText)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
+                    if drawerCategory == .decorations {
+                        ForEach(RoomDecoration.Kind.allCases,id:\.self) { kind in
+                            Button {
+                                do {
+                                    selectedContainerID=nil
+                                    selectedDecorationID=try decorationStore.add(kind:kind)
+                                } catch { errorMessage="装饰物没有添加成功，请重试。" }
+                            } label: {
+                                VStack(spacing:6) {
+                                    PixelDecorationView(kind:kind,roomStyle:currentRoomImage).frame(width:68,height:70)
+                                    Label(kind.title,systemImage:"plus").font(.caption.weight(.bold))
+                                }.frame(width:84).padding(8)
+                                    .background(AppTheme.inset,in:RoundedRectangle(cornerRadius:18))
+                            }.buttonStyle(.plain)
+                        }
+                        ForEach(decorationStore.decorations.filter { !$0.isPlaced }) { decoration in
+                            Button { _=performDecoration(.place,id:decoration.id) } label: {
+                                VStack(spacing:6) {
+                                    PixelDecorationView(kind:decoration.kind,roomStyle:currentRoomImage).frame(width:68,height:70)
+                                    Text("放回\(decoration.name)").font(.caption.weight(.bold))
+                                }.frame(width:84).padding(8)
+                                    .background(AppTheme.blueInset,in:RoundedRectangle(cornerRadius:18))
+                            }.buttonStyle(.plain)
+                        }
+                    } else {
                     let unplaced = containers.filter { !$0.isPlaced }
                     if unplaced.isEmpty {
                         Text("家具都已摆好，轻点房间里的家具即可调整。")
@@ -205,6 +291,7 @@ struct HomeDecorationView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    }
                 }
             }
         }
@@ -218,12 +305,28 @@ struct HomeDecorationView: View {
     private func perform(_ action: FurniturePlacementRepository.Action, on container: Container) -> Bool {
         do {
             try FurniturePlacementRepository.perform(action, on: container, among: containers, in: modelContext)
+            selectedDecorationID = nil
             if container.isPlaced { selectedContainerID = container.id.uuidString }
             else { selectedContainerID = nil }
             return true
         } catch {
             previewScale = nil
             errorMessage = "修改没有保存成功，请再试一次。"
+            return false
+        }
+    }
+
+    @discardableResult
+    private func performDecoration(_ action:RoomDecorationStore.Action,id:String) -> Bool {
+        do {
+            try decorationStore.perform(action,id:id,furnitureLayers:containers.filter(\.isPlaced).map(\.zIndex))
+            let decoration=decorationStore.decorations.first { $0.id==id }
+            selectedDecorationID=decoration?.isPlaced == true ? id:nil
+            if selectedDecorationID != nil { selectedContainerID=nil }
+            return true
+        } catch {
+            decorationScalePreview=nil
+            errorMessage="装饰物位置没有保存成功，请重试。"
             return false
         }
     }
@@ -255,15 +358,9 @@ struct FurnitureView: View {
     var body: some View {
         let styleID = FurnitureConfig.styleID(name: container.name, icon: container.icon, savedID: container.furnitureImageName)
         let size = FurnitureConfig.displaySize(for: container, scaleOverride: previewScale)
-        PixelFurnitureView(styleID: styleID, isMirrored: container.isMirrored)
+        PixelFurnitureView(styleID: styleID, isMirrored: container.isMirrored, showsOutline: isSelected || isTargeted)
             .frame(width: size.width, height: size.height)
             .contentShape(Rectangle())
-            .overlay {
-                if isSelected || isTargeted {
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(AppTheme.blue, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                }
-            }
             .accessibilityLabel(container.name)
             .overlay(alignment: .top) {
                 if isTargeted {

@@ -105,12 +105,12 @@ struct ContentView: View {
                     draggingItems.removeAll() // 确保拖拽状态也清除
                 }
             }
-            .fullScreenCover(isPresented: $showAddSheet) {
+            .sheet(isPresented: $showAddSheet) {
                 // 如果当前选中的是具体容器，则默认选中该容器
                 if case .specific(let container) = selectedFilter {
-                    ItemCaptureFlow(defaultContainer: container)
+                    AddItemView(defaultContainer: container)
                 } else {
-                    ItemCaptureFlow(defaultContainer: nil)
+                    AddItemView()
                 }
             }
             .sheet(isPresented: $showAddContainerSheet) {

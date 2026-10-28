@@ -40,7 +40,7 @@ nonisolated enum IsometricFurniture {
         if mint {
             // 大冰箱是双门宽机身，不只是给小冰箱换个颜色。
             feet(&m,w:34,d:24)
-            m.box(0,0,3,34,24,54,color)
+            m.roundedBox(0,0,3,34,24,54,radius:3,color:color)
             for x in [1.0,18] {
                 m.front(x,24.1,5,15,50,IsoColor.shade(color,1.1))
                 m.front(x+1,24.15,7,0.8,44,0xAFDFD0)
@@ -54,7 +54,7 @@ nonisolated enum IsometricFurniture {
             return
         }
         feet(&m,w:25,d:21)
-        m.box(0,0,3,25,21,49,color)
+        m.roundedBox(0,0,3,25,21,49,radius:3,color:color)
         m.front(1,21.08,5,23,29,IsoColor.shade(color,1.08))
         m.front(1,21.08,35,23,15,IsoColor.shade(color,1.13))
         m.front(1,21.18,33.5,23,1.2,dark)
@@ -70,7 +70,7 @@ nonisolated enum IsometricFurniture {
 
     private static func wardrobe(_ m: inout IsoMesh) {
         feet(&m,w:38,d:22)
-        m.box(0,0,4,38,22,50,wood)
+        m.roundedBox(0,0,4,38,22,50,radius:3,color:wood)
         for x in [2.0,20] {
             m.front(x,22.08,7,16,44,0xDCAE66)
             m.front(x+1,22.12,9,14,40,0xA76837)
@@ -79,43 +79,38 @@ nonisolated enum IsometricFurniture {
         }
         m.box(16,22.3,28,1.4,1,3,0xEBD295)
         m.box(21,22.3,28,1.4,1,3,0xEBD295)
-        m.box(-1,-1,53,40,24,2,PixelPalette.woodLight)
+        m.roundedBox(-1,-1,53,40,24,3,radius:2,color:PixelPalette.woodLight)
     }
 
     private static func sofa(_ m: inout IsoMesh, single: Bool) {
         let w: Double=single ? 25:45, d=24.0
         let fabric: UInt32=single ? PixelPalette.coral : PixelPalette.teal
         feet(&m,w:w,d:d,height:6)
-        m.box(0,0,5,w,d,8,0x75634A)
-        m.beveledBox(0,0,12,w,6,22,bevel:2,color:fabric)
-        m.beveledBox(0,3,12,4,21,14,bevel:1.2,color:fabric)
-        m.beveledBox(w-4,3,12,4,21,14,bevel:1.2,color:fabric)
+        m.roundedBox(0,0,5,w,d,8,radius:3,color:0xBA8956)
+        m.roundedBox(0,0,12,w,8,22,radius:3.5,color:fabric)
+        m.roundedBox(0,4,12,6,20,14,radius:2.7,color:fabric)
+        m.roundedBox(w-6,4,12,6,20,14,radius:2.7,color:fabric)
         let count=single ? 1:2
-        let cushionW=(w-10)/Double(count)
+        let cushionW=(w-14)/Double(count)
         for i in 0..<count {
-            let x=5+Double(i)*cushionW
-            m.beveledBox(x,6,12,cushionW-0.6,17,5,bevel:1.2,color:IsoColor.shade(fabric,1.12))
-            m.beveledBox(x,5.7,18,cushionW-0.7,1.5,13,bevel:0.5,color:IsoColor.shade(fabric,1.08))
-            m.front(x+1,7.24,19,cushionW-2.8,0.5,IsoColor.shade(fabric,0.86))
+            let x=7+Double(i)*cushionW
+            m.roundedBox(x,8,12,cushionW-0.6,15,6,radius:2.5,color:IsoColor.shade(fabric,1.12))
+            m.roundedBox(x,7.5,19,cushionW-0.7,2.8,12,radius:1.2,color:IsoColor.shade(fabric,1.08))
             // 固定织物花纹，刷新时不会随机变化。
             for stitch in 0..<6 {
-                m.top(x+2+Double(stitch)*2.2,9+Double(stitch%2)*5,17.05,0.6,0.9,
+                m.top(x+2+Double(stitch)*1.2,10+Double(stitch%2)*5,18.05,0.6,0.9,
                       IsoColor.shade(fabric,1.23))
             }
         }
         // 扶手高光与坐垫缝线属于模型表面，而非画面上的水平线。
-        m.top(0.7,5,26.07,2.5,17,IsoColor.shade(fabric,1.3))
-        m.top(w-3.3,5,26.07,2.5,17,IsoColor.shade(fabric,1.3))
-        m.beveledBox(6,8,17,9,4,9,bevel:1.2,color:PixelPalette.yellow)
-        m.front(7.5,12.08,19,6,0.8,0xFFF0C1)
-        m.front(10,12.14,20,0.7,4,0xD68E42)
+        m.roundedBox(8,10,18,8,4,8,radius:1.5,color:PixelPalette.yellow)
+        m.front(10,14.05,22,1,1,0xFFF0C1)
+        m.front(13,14.05,22,1,1,0xFFF0C1)
     }
 
     private static func table(_ m: inout IsoMesh) {
         feet(&m,w:37,d:24,height:18)
-        m.box(-1,-1,18,39,26,3,wood)
-        m.top(0,0,21.08,37,24,PixelPalette.woodLight)
-        for y in [5.0,12,19] { m.top(1,y,21.15,35,0.5,0xCB8A46) }
+        m.roundedBox(-1,-1,18,39,26,4,radius:3,color:PixelPalette.woodLight)
         m.box(5,6,21.2,10,7,1.2,0x567777)
         m.box(6,6,22.5,10,6,0.8,0xE2D6B6)
         mug(&m,x:25,y:8,z:21.3)
@@ -144,8 +139,8 @@ nonisolated enum IsometricFurniture {
     private static func cabinet(_ m: inout IsoMesh, kitchen: Bool, wide: Bool) {
         let w: Double=wide ? 49:38, d=19.0, h=kitchen ? 29.0:20
         feet(&m,w:w,d:d)
-        m.box(0,0,3,w,d,h,wood)
-        m.box(-1,-1,h+3,w+2,d+2,2,kitchen ? cream : PixelPalette.woodLight)
+        m.roundedBox(0,0,3,w,d,h,radius:2.5,color:wood)
+        m.roundedBox(-1,-1,h+3,w+2,d+2,2.5,radius:1,color:kitchen ? cream : PixelPalette.woodLight)
         for i in 0..<2 {
             let x=2+Double(i)*(w/2)
             m.front(x,19.09,5,w/2-4,h-2,kitchen ? PixelPalette.tealLight : 0xD9A05B)
@@ -166,21 +161,20 @@ nonisolated enum IsometricFurniture {
     }
 
     private static func backpack(_ m: inout IsoMesh) {
-        m.beveledBox(2,1,1,18,10,21,bevel:2,color:PixelPalette.coral)
-        m.beveledBox(3.5,2,19,15,8,7,bevel:2,color:PixelPalette.coral)
+        m.roundedBox(2,1,1,18,10,24,radius:4,color:PixelPalette.coral)
         m.box(0,2,3,3,7,16,0x725140)
         // 两条肩带和弧形提手，便于在小缩略图中区分背包与纸箱。
         m.box(5,-1,2,2,2,21,0x804447); m.box(15,-1,2,2,2,21,0x804447)
         m.beveledBox(7,3,25,8,2,3,bevel:0.6,color:0x824743)
         m.box(7,3,23,1.5,2,4,0x824743); m.box(13.5,3,23,1.5,2,4,0x824743)
-        m.beveledBox(5,11,3,12,2.5,9,bevel:0.6,color:0xEFAB65)
+        m.roundedBox(5,11,3,12,2.5,9,radius:1,color:0xEFAB65)
         m.front(3,11.06,18,16,0.8,0x3F392D)
         m.box(16,11.4,15,1,0.7,3,0xE8CCA0)
         m.front(6,13.6,10,10,0.7,0xEDD099)
     }
 
     private static func lamp(_ m: inout IsoMesh) {
-        m.box(0,0,0,12,12,2,0xA4824B)
+        m.cylinder(6,6,0,radius:7,height:2,color:0xC29458)
         m.box(5,5,2,2,2,30,0xAD955B)
         // 四个斜面组成灯罩，顶面/阴影与房间光照一致。
         m.face([.init(-2,14,28),.init(14,14,28),.init(11,11,43),.init(1,11,43)],0xD5BA70,outline:0x796840)
@@ -213,7 +207,7 @@ nonisolated enum IsometricFurniture {
 
     private static func mirrorCabinet(_ m: inout IsoMesh) {
         // 门内可收纳的镜柜，有立体柜体、分开的镜门、把手与底部开放层。
-        m.box(0,0,0,30,8,42,PixelPalette.teal)
+        m.roundedBox(0,0,0,30,8,42,radius:2,color:PixelPalette.teal)
         m.front(2,8.1,9,26,31,0xD9BC88)
         for x in [3.0,16] {
             m.front(x,8.16,11,11,27,0x83C1C5)
@@ -281,7 +275,7 @@ nonisolated enum IsometricFurniture {
     }
 
     private static func carton(_ m: inout IsoMesh) {
-        m.box(0,0,0,24,20,19,0xC99655)
+        m.roundedBox(0,0,0,24,20,19,radius:2,color:0xC99655)
         m.top(10,0,19.09,4,20,0xF0D48F)
         m.front(10,20.09,9,4,10,0xF0D48F)
         m.front(3,20.12,4,7,5,0xDFD5B1)

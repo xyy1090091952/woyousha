@@ -92,6 +92,42 @@ nonisolated struct IsoMesh {
         face(rings[3],IsoColor.shade(color,1.15),outline:IsoColor.shade(color,0.7))
     }
 
+    /// 圆润的玩具家具：横向圆角和上下软边分开控制，最终仍输出清晰像素边缘。
+    mutating func roundedBox(_ x: Double, _ y: Double, _ z: Double, _ w: Double, _ d: Double, _ h: Double,
+                             radius: Double, color: UInt32) {
+        let r = min(radius, min(w,d)*0.45)
+        let soft = min(r, h*0.45)
+        let heights = [z,z+soft*0.25,z+soft*0.65,z+soft,z+h-soft,z+h-soft*0.65,z+h-soft*0.25,z+h]
+        let insets = [soft*0.65,soft*0.25,soft*0.06,0,0,soft*0.06,soft*0.25,soft*0.65]
+        var rings: [[IsoPoint]] = []
+        for (height, inset) in zip(heights,insets) {
+            let corner = max(0.1,r-inset)
+            let centers = [(x+w-inset-corner,y+inset+corner),
+                           (x+w-inset-corner,y+d-inset-corner),
+                           (x+inset+corner,y+d-inset-corner),
+                           (x+inset+corner,y+inset+corner)]
+            var ring: [IsoPoint] = []
+            for i in 0..<4 {
+                for step in 0...4 {
+                    let a = (-Double.pi/2)+Double(i)*(.pi/2)+Double(step)*(.pi/8)
+                    ring.append(.init(centers[i].0+cos(a)*corner,centers[i].1+sin(a)*corner,height))
+                }
+            }
+            rings.append(ring)
+        }
+        for level in 0..<(rings.count-1) {
+            for i in rings[level].indices {
+                let j = (i+1)%rings[level].count
+                let a = rings[level][i], b = rings[level][j]
+                let dx = b.x-a.x, dy = b.y-a.y
+                let length = max(0.001,hypot(dx,dy))
+                let lighting = 0.88-0.10*dy/length+0.13*dx/length+(level>4 ? 0.08:0)
+                face([a,b,rings[level+1][j],rings[level+1][i]],IsoColor.shade(color,lighting))
+            }
+        }
+        face(rings.last!,IsoColor.shade(color,1.15))
+    }
+
     /// 多边形圆台：杯子、垃圾桶、灯座和植物叶片共用，所有曲线最后仍栅格化为像素。
     mutating func cylinder(_ x: Double, _ y: Double, _ z: Double, radius: Double, height: Double,
                            color: UInt32, topRadius: Double? = nil, sides: Int = 12) {

@@ -5,14 +5,13 @@ import PhotosUI
 struct AddItemView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \Container.createdDate) private var containers: [Container]
     @State private var editor: ItemEditorModel
     @State private var photosPickerItem: PhotosPickerItem?
-    @State private var showCamera = false
+    @State private var isCameraMode: Bool
     @State private var showPhotoPicker = false
-    @State private var cameraAccess = CameraController()
-    @State private var pendingCameraImage: UIImage?
-    @State private var pendingCameraError: String?
+    @State private var camera = CameraController()
     @State private var hasLoadedInitialImage = false
     private let initialImage: UIImage?
     private let isEditing: Bool
@@ -20,6 +19,7 @@ struct AddItemView: View {
     init(defaultContainer: Container? = nil, itemToEdit: Item? = nil, initialImage: UIImage? = nil) {
         isEditing = itemToEdit != nil
         self.initialImage = initialImage
+        _isCameraMode = State(initialValue: itemToEdit == nil && initialImage == nil)
         _editor = State(initialValue: ItemEditorModel(item: itemToEdit, defaultContainer: defaultContainer))
     }
 
@@ -88,14 +88,19 @@ struct AddItemView: View {
             .toolbarBackground(AppTheme.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }.disabled(editor.isSaving)
+                    Button("取消") {
+                        camera.setActive(false)
+                        dismiss()
+                    }.disabled(editor.isSaving)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 8) {
                     Button {
+                        camera.setActive(false)
                         Task {
                             if await editor.save(in: modelContext) { dismiss() }
+                            else if isCameraMode { camera.setActive(true) }
                         }
                     } label: {
                         HStack(spacing: 10) {
@@ -106,7 +111,7 @@ struct AddItemView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(AppButtonStyle())
-                    .disabled(!editor.canSave)
+                    .disabled(!editor.canSave || camera.isCapturing)
                     if editor.draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("填写物品名称后就可以保存")
                             .font(.caption)
@@ -117,33 +122,34 @@ struct AddItemView: View {
                 .padding(.vertical, 12)
                 .background(AppTheme.surface)
             }
-            .fullScreenCover(isPresented: $showCamera, onDismiss: {
-                // 等全屏相机退场完成再处理图片，避免页面切换取消新照片任务。
-                if let image = pendingCameraImage {
-                    pendingCameraImage = nil
-                    editor.selectCameraImage(image)
-                }
-                if let message = pendingCameraError {
-                    pendingCameraError = nil
-                    editor.errorMessage = message
-                }
-            }) {
-                CameraView(onCapture: { image in
-                    pendingCameraImage = image
-                    showCamera = false
-                }, onCancel: {
-                    showCamera = false
-                }, onError: { message in
-                    pendingCameraError = message
-                    showCamera = false
-                })
-                .ignoresSafeArea()
-            }
             .photosPicker(isPresented: $showPhotoPicker, selection: $photosPickerItem, matching: .images)
-            .onChange(of: photosPickerItem) { _, selection in editor.selectPhoto(selection) }
+            .onChange(of: photosPickerItem) { _, selection in
+                guard selection != nil else { return }
+                isCameraMode = false
+                camera.setActive(false)
+                editor.selectPhoto(selection)
+            }
+            .onChange(of: showPhotoPicker) { _, isPresented in
+                if !isPresented, isCameraMode, scenePhase == .active { camera.setActive(true) }
+            }
+            .onChange(of: camera.photo?.id) { _, _ in
+                guard let data = camera.consumePhoto() else { return }
+                // 拍摄结果原位替换取景，只启动一次本地抠图，不另开系统确认页面。
+                isCameraMode = false
+                camera.setActive(false)
+                editor.selectCameraData(data)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { camera.setActive(false) }
+                else if phase == .active, isCameraMode, !showPhotoPicker, !editor.isSaving {
+                    if camera.state == .denied || camera.state == .restricted { camera.retry() }
+                    else { camera.setActive(true) }
+                }
+                // 权限弹窗导致的 inactive 不停止会话，避免授权时启停互相打断。
+            }
             .onDisappear {
-                // 打开全屏相机同样会触发 onDisappear，但并没有退出录入。
-                if !showCamera { editor.cancelPhotoTask() }
+                camera.setActive(false)
+                editor.cancelPhotoTask()
             }
             .alert("暂时没有完成", isPresented: Binding(
                 get: { editor.errorMessage != nil },
@@ -153,6 +159,12 @@ struct AddItemView: View {
             } message: {
                 Text(editor.errorMessage ?? "")
             }
+            .alert("拍摄未完成", isPresented: Binding(
+                get: { camera.captureError != nil },
+                set: { if !$0 { camera.captureError = nil } }
+            )) {
+                Button("知道了", role: .cancel) { camera.captureError = nil }
+            } message: { Text(camera.captureError ?? "") }
         }
         .tint(AppTheme.accent)
         .interactiveDismissDisabled(editor.isSaving)
@@ -166,23 +178,44 @@ struct AddItemView: View {
 
     private var photoSection: some View {
         VStack(spacing: 12) {
-            ItemPhotoStage(image: editor.image)
-                .overlay {
+            Group {
+                if isCameraMode {
+                    CameraView(camera: camera)
+                        .frame(height: AppTheme.Layout.photoHeight)
+                } else {
+                    ItemPhotoStage(image: editor.image)
+                }
+            }
+                .overlay(alignment: .bottom) {
                     if editor.isProcessing {
-                        VStack(spacing: 10) {
-                            ProgressView().tint(AppTheme.accent)
-                            Text(editor.photoMessage).font(.subheadline)
+                        VStack(spacing: 8) {
+                            HStack(spacing: 10) {
+                                ProgressView().tint(AppTheme.accent)
+                                Text(editor.photoMessage).font(.subheadline.weight(.semibold))
+                            }
+                            if editor.processingIsTakingLong {
+                                Text("处理还在进行，你可以先填写下面的信息")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.secondaryText)
+                                if editor.canKeepOriginalPhoto {
+                                    Button("先用原图") { editor.keepOriginalPhoto() }
+                                        .font(.subheadline.weight(.semibold))
+                                        .frame(minHeight: 44)
+                                }
+                            }
                         }
-                        .padding(20)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
-                        .accessibilityElement(children: .combine)
+                        .padding(10)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if editor.image != nil {
+                    if editor.image != nil && !isCameraMode {
                         Button {
                             editor.removePhoto()
                             photosPickerItem = nil
+                            isCameraMode = true
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 13, weight: .semibold))
@@ -196,20 +229,25 @@ struct AddItemView: View {
                 }
             HStack(spacing: 12) {
                 Button {
-                    Task {
-                        if await cameraAccess.prepare() {
-                            pendingCameraImage = nil
-                            showCamera = true
-                        }
+                    if isCameraMode { camera.capture() }
+                    else {
+                        editor.cancelPhotoTask()
+                        isCameraMode = true
                     }
                 } label: {
-                    Label(cameraAccess.isRequesting ? "正在打开…" : "拍一张", systemImage: "camera")
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 8) {
+                        if camera.isCapturing { ProgressView().tint(AppTheme.onAccent) }
+                        else { Image(systemName: "camera.fill") }
+                        Text(camera.isCapturing ? "拍摄中…" : (isCameraMode ? camera.shutterTitle : "重新拍"))
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AppButtonStyle())
-                .disabled(cameraAccess.isRequesting)
+                .disabled(isCameraMode && !camera.canUseShutter)
                 Button {
                     // 允许重新选取同一张照片。
+                    editor.cancelPhotoTask()
+                    camera.setActive(false)
                     photosPickerItem = nil
                     showPhotoPicker = true
                 } label: {
@@ -217,23 +255,12 @@ struct AddItemView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AppButtonStyle(isPrimary: false))
+                .disabled(camera.isCapturing)
             }
-            Text(editor.photoMessage)
+            Text(isCameraMode ? "照片选填，在这里拍照后自动制作贴纸" : editor.photoMessage)
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
         }
-        .alert("无法打开相机", isPresented: Binding(
-            get: { cameraAccess.accessError != nil },
-            set: { if !$0 { cameraAccess.accessError = nil } }
-        )) {
-            if cameraAccess.accessError == .denied {
-                Button("打开设置") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-                }
-            }
-            Button("从相册选") { showPhotoPicker = true }
-            Button("取消", role: .cancel) { cameraAccess.accessError = nil }
-        } message: { Text(cameraAccess.errorMessage) }
     }
 }
 

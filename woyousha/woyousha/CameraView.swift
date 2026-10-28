@@ -1,64 +1,160 @@
 import SwiftUI
+import AVFoundation
 import UIKit
-import UniformTypeIdentifiers
-import OSLog
 
-/// 直接展示完整的系统相机：不添加子控制器、覆盖层或自定义快门。
-/// 保留系统的取景、对焦、拍摄、重拍和“使用照片”流程。
-struct CameraView: UIViewControllerRepresentable {
-    let onCapture: (UIImage) -> Void
-    let onCancel: () -> Void
-    let onError: (String) -> Void
+/// 只显示 App 内的实时取景，不打开系统相机页面。快门和相册由录入页面提供。
+struct CameraView: View {
+    let camera: CameraController
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera // 调用方先完成设备检查和授权。
-        picker.mediaTypes = [UTType.image.identifier]
-        picker.cameraCaptureMode = .photo
-        picker.allowsEditing = false
-        picker.showsCameraControls = true
-        picker.modalPresentationStyle = .fullScreen
-        picker.delegate = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ picker: UIImagePickerController, context: Context) {
-        context.coordinator.parent = self
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-
-    static func dismantleUIViewController(_ picker: UIImagePickerController, coordinator: Coordinator) {
-        picker.delegate = nil
-    }
-
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        var parent: CameraView
-        private var completed = false
-        private let logger = Logger(subsystem: "com.OGS.woyousha", category: "Camera")
-
-        init(parent: CameraView) { self.parent = parent }
-
-        func navigationController(_ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool) {
-            logger.info("Native camera controller appeared")
-        }
-
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            guard !completed else { return }
-            completed = true
-            guard let image = info[.originalImage] as? UIImage else {
-                logger.error("System camera returned no image")
-                parent.onError("系统没有返回照片，请重试。")
-                return
+    var body: some View {
+        ZStack {
+            CameraPreview(camera: camera)
+            if camera.state == .ready {
+                VStack {
+                    HStack {
+                        Spacer()
+                        if camera.hasFlash {
+                            cameraButton(camera.usesFlash ? "bolt.fill" : "bolt.slash.fill", label: "切换闪光灯") {
+                                camera.usesFlash.toggle()
+                            }
+                            .disabled(camera.isCapturing)
+                        }
+                        if camera.canSwitchCamera {
+                            cameraButton("arrow.triangle.2.circlepath.camera", label: "切换摄像头") { camera.switchCamera() }
+                                .disabled(camera.isCapturing)
+                        }
+                    }
+                    Spacer()
+                    Text("轻点画面对焦")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(.black.opacity(0.4), in: Capsule())
+                        .allowsHitTesting(false)
+                }
+                .padding(12)
+            } else {
+                VStack(spacing: 14) {
+                    if camera.state == .preparing {
+                        ProgressView().tint(AppTheme.blue)
+                    } else {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(AppTheme.blue)
+                    }
+                    Text(camera.message)
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(AppTheme.text)
+                    if camera.state == .denied {
+                        Button("打开设置") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                        }
+                        .buttonStyle(AppButtonStyle(isPrimary: false))
+                    } else if case .failed = camera.state {
+                        Button("重试") { camera.retry() }.buttonStyle(AppButtonStyle(isPrimary: false))
+                    } else if case .interrupted = camera.state {
+                        Button("重试") { camera.retry() }.buttonStyle(AppButtonStyle(isPrimary: false))
+                    }
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(AppTheme.blueInset)
             }
-            logger.info("Native camera delivered photo: \(image.size.width) × \(image.size.height)")
-            parent.onCapture(image)
         }
+        .background(AppTheme.cameraBackground)
+        .clipShape(RoundedRectangle(cornerRadius: CameraSettings.cornerRadius))
+        .overlay { RoundedRectangle(cornerRadius: CameraSettings.cornerRadius).strokeBorder(AppTheme.blue.opacity(0.2), lineWidth: 2) }
+        .onAppear { camera.setActive(true) }
+        .onDisappear { camera.setActive(false) }
+        .accessibilityLabel("物品拍照取景窗口")
+    }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            guard !completed else { return }
-            completed = true
-            parent.onCancel()
+    private func cameraButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+private struct CameraPreview: UIViewRepresentable {
+    let camera: CameraController
+
+    func makeUIView(context: Context) -> PreviewView {
+        let view = PreviewView()
+        view.camera = camera
+        camera.attach(to: view.previewLayer)
+        return view
+    }
+
+    func updateUIView(_ view: PreviewView, context: Context) {
+        view.isFrontCamera = camera.isFrontCamera
+        view.updateConnection()
+    }
+
+    static func dismantleUIView(_ view: PreviewView, coordinator: ()) {
+        view.camera?.detach(from: view.previewLayer)
+    }
+}
+
+private final class PreviewView: UIView {
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    weak var camera: CameraController?
+    var isFrontCamera = false
+    private let focusIndicator = CALayer()
+    private var focusTimeout: DispatchWorkItem?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        focusIndicator.borderColor = UIColor.systemYellow.cgColor
+        focusIndicator.borderWidth = 2
+        focusIndicator.cornerRadius = 8
+        focusIndicator.opacity = 0
+        layer.addSublayer(focusIndicator)
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(focus(_:))))
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateConnection()
+    }
+
+    func updateConnection() {
+        let angle: CGFloat
+        switch window?.windowScene?.interfaceOrientation {
+        case .landscapeLeft: angle = 0
+        case .landscapeRight: angle = 180
+        case .portraitUpsideDown: angle = 270
+        default: angle = CameraSettings.portraitRotation
+        }
+        if let connection = previewLayer.connection {
+            if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = isFrontCamera
+            }
+        }
+        camera?.rotate(to: angle)
+    }
+
+    @objc private func focus(_ gesture: UITapGestureRecognizer) {
+        guard camera?.canCapture == true else { return }
+        let point = gesture.location(in: self)
+        camera?.focus(at: previewLayer.captureDevicePointConverted(fromLayerPoint: point))
+        focusTimeout?.cancel()
+        let size = CameraSettings.focusIndicatorSize
+        focusIndicator.frame = CGRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size)
+        focusIndicator.opacity = 1
+        let timeout = DispatchWorkItem { [weak self] in self?.focusIndicator.opacity = 0 }
+        focusTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + CameraSettings.focusIndicatorDuration, execute: timeout)
     }
 }
