@@ -53,6 +53,7 @@ struct woyoushaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .tint(AppTheme.accent)
                 .onAppear {
                     // 启动时执行一次性迁移任务
                     performImageMigration(modelContainer: sharedModelContainer)

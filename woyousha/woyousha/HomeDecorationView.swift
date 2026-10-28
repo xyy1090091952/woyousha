@@ -73,7 +73,8 @@ struct HomeDecorationView: View {
                         }) {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(.black)
+                                .foregroundStyle(AppTheme.accent)
+                                .frame(width: 44, height: 44)
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
@@ -88,10 +89,13 @@ struct HomeDecorationView: View {
                         }) {
                             Text(isEditing ? "完成" : "装修")
                                 .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.black)
+                                .foregroundStyle(AppTheme.accent)
+                                .frame(minHeight: 44)
                         }
                     }
                 }
+                .tint(AppTheme.accent)
+                .toolbarBackground(AppTheme.background, for: .navigationBar)
         }
     }
     
@@ -99,7 +103,7 @@ struct HomeDecorationView: View {
         ZStack {
             // 背景色
             if !isPreviewMode {
-                Color(hex: "F2F2F7").ignoresSafeArea()
+                AppTheme.background.ignoresSafeArea()
             } else {
                 Color.clear.ignoresSafeArea() // 确保背景色忽略安全区域，以便填满整个区域
             }
@@ -241,15 +245,15 @@ struct HomeDecorationView: View {
                         }) {
                             ZStack {
                                 Circle()
-                                    .fill(.white.opacity(0.9))
-                                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                                    .fill(AppTheme.surface.opacity(0.95))
                                 
                                 Image(systemName: "scope")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.black)
+                                    .foregroundStyle(AppTheme.accent)
                             }
-                            .frame(width: 32, height: 32)
+                            .frame(width: 44, height: 44)
                         }
+                        .accessibilityLabel("房间视角复位")
                         .padding(.trailing, 20)
                         .padding(.bottom, 180)
                     }
@@ -263,8 +267,8 @@ struct HomeDecorationView: View {
                         Spacer()
                         
                         Picker("房间风格", selection: $currentRoomImage) {
-                            Text("风格 1").tag("home1")
-                            Text("风格 2").tag("home2")
+                            Text("温暖小屋").tag("home1")
+                            Text("清爽小屋").tag("home2")
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 200)
@@ -367,8 +371,13 @@ struct HomeDecorationView: View {
     // 底部家具抽屉
     var furnitureDrawer: some View {
         VStack(alignment: .leading) {
-            Text("仓库")
+            HStack {
+                Text("待布置的容器")
+                Spacer()
+                Text("轻点放入房间").font(.caption).foregroundStyle(AppTheme.secondaryText)
+            }
                 .font(.headline)
+                .foregroundStyle(AppTheme.text)
                 .padding(.horizontal)
                 .padding(.top)
             
@@ -385,13 +394,17 @@ struct HomeDecorationView: View {
                             VStack {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.white)
-                                        .shadow(radius: 2)
+                                        .fill(AppTheme.inset)
                                         .frame(width: 80, height: 80)
                                     
-                                    Image(systemName: container.icon)
-                                        .font(.largeTitle)
-                                        .foregroundStyle(.blue)
+                                    if let imageName = container.furnitureImageName {
+                                        Image(imageName)
+                                            .resizable().scaledToFit().frame(width: 64, height: 64)
+                                    } else {
+                                        Image(systemName: container.icon)
+                                            .font(.largeTitle)
+                                            .foregroundStyle(AppTheme.accent)
+                                    }
                                 }
                                 Text(container.name)
                                     .font(.caption)
@@ -414,11 +427,11 @@ struct HomeDecorationView: View {
                 .padding()
             }
         }
-        .background(.ultraThinMaterial)
-        .cornerRadius(20)
+        .background(AppTheme.surface)
+        .cornerRadius(AppTheme.Layout.cornerRadius)
         .padding()
         // 弱化仓库面板的投影强度
-        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 0)
+        .shadow(color: .black.opacity(0.04), radius: 10, x: 0, y: 0)
     }
     
     // 层级管理函数
@@ -605,7 +618,7 @@ struct FurnitureBubbleMenu: View {
                                 .scaledToFit()
                                 .frame(width: 40, height: 40)
                                 .padding(4)
-                                .background(container.furnitureImageName == config.imageName ? Color.blue.opacity(0.2) : Color.clear)
+                                .background(container.furnitureImageName == config.imageName ? AppTheme.inset : Color.clear)
                                 .cornerRadius(8)
                                 .onTapGesture {
                                     withAnimation {
@@ -640,14 +653,15 @@ struct FurnitureBubbleMenu: View {
             }
         }
         .padding(12)
-        .background(.regularMaterial)
+        .background(AppTheme.surface)
+        .tint(AppTheme.accent)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         // 添加一个小三角箭头指向下方
         .overlay(alignment: .bottom) {
             Image(systemName: "triangle.fill")
                 .font(.system(size: 12))
-                .foregroundStyle(.regularMaterial)
+                .foregroundStyle(AppTheme.surface)
                 .rotationEffect(.degrees(180))
                 .offset(y: 8)
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 2)
@@ -716,9 +730,9 @@ struct FurnitureView: View {
                 VStack {
                     Image(systemName: container.icon)
                         .font(.largeTitle)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.onAccent)
                         .padding()
-                        .background(Color.blue)
+                        .background(AppTheme.accent)
                         .clipShape(Circle())
                     Text(container.name)
                         .font(.caption)
@@ -727,7 +741,7 @@ struct FurnitureView: View {
                         .cornerRadius(4)
                 }
                 .scaleEffect(container.scale)
-                .shadow(color: (isSelected || isTargeted) ? .blue : .clear, radius: 5)
+                .shadow(color: (isSelected || isTargeted) ? AppTheme.accent : .clear, radius: 5)
             }
         }
         // 高亮时的 Tooltip

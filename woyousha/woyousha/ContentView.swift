@@ -17,6 +17,7 @@ enum ContainerFilter: Equatable {
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     // 查询所有容器
     @Query(sort: \Container.createdDate) private var containers: [Container]
@@ -76,7 +77,7 @@ struct ContentView: View {
         NavigationStack {
             ZStack {
                 // 背景
-                DotGridBackground(spacing: 20, dotColor: .gray.opacity(0.3))
+                AppTheme.background.ignoresSafeArea()
                 
                 VStack(spacing: 0) {
                     // 1. 顶部区域：家/房间视图 + 编辑按钮
@@ -84,12 +85,13 @@ struct ContentView: View {
                     
                     // 2. 容器选择列表
                     containerListView
+                    inventoryHeading
                     
                     // 3. 物品网格
                     itemsGridView
                 }
             }
-            .navigationBarHidden(true) // 隐藏默认导航栏，使用自定义头部
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 initializeDefaultContainers()
                 // 同步 baseColumnCount 与 gridColumnCount
@@ -188,6 +190,7 @@ struct ContentView: View {
                 }
             }
         }
+        .tint(AppTheme.accent)
     }
     
     // 装修模式的全屏覆盖
@@ -197,69 +200,43 @@ struct ContentView: View {
     @State private var selectedContainerID: String?
 
     // 家的预览高度状态
-    @State private var homeHeaderHeight: CGFloat = 420
-    private let maxHeaderHeight: CGFloat = 420
-    private let minHeaderHeight: CGFloat = 210
+    @State private var homeHeaderHeight: CGFloat = 320
+    private let maxHeaderHeight: CGFloat = 320
+    private let minHeaderHeight: CGFloat = 170
     
     // MARK: - Views
     
     private var homeHeaderView: some View {
-        ZStack(alignment: .top) {
-            // 家的模拟图 (占位)
-            // 使用 Color 作为背景，并让它忽略安全区域
-            // 内容（图标和文字）单独放置，保持在安全区域内
-            
-            // 1. 内容层：改为 HomeDecorationView 的入口
-            // 直接展示 HomeDecorationView (预览模式)
-            ZStack {
-                // 使用 Home DecorationView 作为背景预览
-                // 开启 isPreviewMode，隐藏导航栏和底部抽屉
-                // 传递 selectedContainerID 绑定
-                HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
-            }
-            .frame(height: homeHeaderHeight) // 使用动态高度
-            // .background(Color.blue.opacity(0.05)) // 移除浅蓝色背景
-            .onTapGesture {
-                // 点击整个区域也可以进入装修模式？或者只是预览交互
-                // 用户说“在首页预览的页面不应该看得到所谓的仓库，应该就是个纯预览”
-                // “在用户点击「装修」（也就是修改布置）的时候，再进入修改页面”
-                // 所以这里应该允许简单的拖拽查看（已在 HomeDecorationView 支持），但不允许编辑
-            }
-            
-            // 顶部按钮栏
-            HStack {
-                // 添加物品按钮 (左侧)
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("我的小天地")
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .foregroundStyle(AppTheme.text)
+                    Text("\(allItems.count) 件物品 · \(containers.count) 个容器")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+                Spacer(minLength: 4)
                 if !isEditing {
                     Button(action: { showAddSheet = true }) {
                         Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .semibold)) // 调整为 semibold
-                            .foregroundStyle(.black)
-                            .frame(width: 44, height: 40) // 高度从 36 增加到 40，与其他按钮匹配
-                            .background(Color.white.opacity(0.9))
-                            .clipShape(Capsule())
-                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(AppTheme.onAccent)
+                            .frame(width: 44, height: 44)
+                            .background(AppTheme.accent, in: Circle())
                     }
+                    .accessibilityLabel("添加物品")
                     .transition(.opacity)
                 }
-                
-                Spacer()
-                
-                // 装修按钮 (右侧，新增)
-                Button(action: {
-                    showDecorationSheet = true
-                }) {
-                    Label("装修", systemImage: "hammer.fill")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10) // 增加垂直内边距，使高度更大
-                        .background(Color.white.opacity(0.9))
-                        .clipShape(Capsule())
-                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                Button { showDecorationSheet = true } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 18))
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(width: 44, height: 44)
+                        .background(AppTheme.surface, in: Circle())
                 }
-                .padding(.trailing, 8)
-                
-                // 物品列表编辑按钮 (右侧)
+                .accessibilityLabel("装修小房间")
                 Button(action: {
                     withAnimation {
                         isEditing.toggle()
@@ -267,29 +244,20 @@ struct ContentView: View {
                     }
                 }) {
                     Text(isEditing ? "完成" : "编辑")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10) // 增加垂直内边距，使高度更大
-                        .background(Color.white.opacity(0.9))
-                        .clipShape(Capsule())
-                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16) // 恢复正常的顶部间距
-            
-            // 高度切换按钮 (右下角)
-            // 使用 overlay 实现，避免 VStack/HStack 的空白区域遮挡底层点击
+            .padding(.horizontal, AppTheme.Layout.pagePadding)
+            .padding(.vertical, 12)
+            HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
+                .frame(height: homeHeaderHeight)
+                // 画布内容随抽屉收起一起裁剪，避免房间穿到物品列表上。
+                .clipped()
+                .overlay(alignment: .bottomTrailing) { homeHeaderButtonGroup }
         }
-        .overlay(alignment: .bottomTrailing) {
-            homeHeaderButtonGroup
-        }
-        // 2. 背景层：单独设置背景色并延伸到安全区域
-        .background(
-            Color.gray.opacity(0.1)
-                .ignoresSafeArea(edges: .top)
-        )
+        .background(AppTheme.inset.ignoresSafeArea(edges: .top))
         // 确保 ZIndex 正确，避免被 containerListView 覆盖时出现背景穿透
         .zIndex(0)
         // 全屏装修模式
@@ -302,8 +270,8 @@ struct ContentView: View {
     }
 
     private var homeHeaderButtonGroup: some View {
-        let buttonSize: CGFloat = 32
-        let spacing: CGFloat = 12
+        let buttonSize: CGFloat = 44
+        let spacing: CGFloat = 8
         
         return VStack(spacing: spacing) {
             // 上方按钮：执行复位 (原定位按钮的位置)
@@ -313,6 +281,7 @@ struct ContentView: View {
             ) {
                 NotificationCenter.default.post(name: .resetHomeView, object: nil)
             }
+            .accessibilityLabel("房间视角复位")
             
             // 下方按钮：执行缩放 (原缩放按钮的位置)
             Button(action: {
@@ -320,28 +289,28 @@ struct ContentView: View {
                 // 这有助于断开点击反馈动画与布局动画之间的耦合
                 DispatchQueue.main.async {
                     let nextHeight = (homeHeaderHeight == maxHeaderHeight) ? minHeaderHeight : maxHeaderHeight
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                         homeHeaderHeight = nextHeight
                     }
                 }
             }) {
                 ZStack {
                     Circle()
-                        .fill(Color.white.opacity(0.9))
-                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                        .fill(AppTheme.surface.opacity(0.95))
                     
                     // 大面板状态下的图标 (准备变小)
                     Image(systemName: "arrow.down.right.and.arrow.up.left")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(AppTheme.accent)
                         .rotationEffect(.degrees(homeHeaderHeight == maxHeaderHeight ? 0 : 180))
                 }
                 .frame(width: buttonSize, height: buttonSize)
             }
             .buttonStyle(NoButtonFeedbackStyle())
+            .accessibilityLabel(homeHeaderHeight == maxHeaderHeight ? "收起小房间" : "展开小房间")
         }
         .padding(.trailing, 16)
-        .padding(.bottom, 48) // 增加底部边距，避免被上方偏移的面板遮挡
+        .padding(.bottom, 36)
     }
     
     // 封装圆形图标按钮
@@ -349,12 +318,11 @@ struct ContentView: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(Color.white.opacity(0.9))
-                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    .fill(AppTheme.surface.opacity(0.95))
                 
                 Image(systemName: systemName)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(AppTheme.accent)
             }
             .frame(width: buttonSize, height: buttonSize)
         }
@@ -363,7 +331,7 @@ struct ContentView: View {
     
     private var containerListView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 // "全部" 容器
                 allContainerButton
                 
@@ -398,7 +366,7 @@ struct ContentView: View {
             .padding(.vertical, 16) // 增加一点垂直内边距，适应大圆角
         }
         .background(
-            Color.white
+            AppTheme.surface
                 .clipShape(
                     .rect(
                         topLeadingRadius: 30,
@@ -419,14 +387,14 @@ struct ContentView: View {
             Image(systemName: "square.grid.2x2")
                 .font(.title2)
                 .frame(width: 44, height: 44)
-                .foregroundStyle(selectedFilter == .all ? .white : .gray)
-                .background(selectedFilter == .all ? Color.blue : Color.gray.opacity(0.1))
-                .clipShape(Circle())
+                .foregroundStyle(selectedFilter == .all ? AppTheme.onAccent : AppTheme.secondaryText)
+                .background(selectedFilter == .all ? AppTheme.accent : AppTheme.inset)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             
             Text("全部")
                 .font(.caption)
                 .fontWeight(selectedFilter == .all ? .bold : .regular)
-                .foregroundStyle(selectedFilter == .all ? .black : .gray)
+                .foregroundStyle(selectedFilter == .all ? AppTheme.text : AppTheme.secondaryText)
         }
         .onTapGesture {
             withAnimation {
@@ -440,14 +408,14 @@ struct ContentView: View {
             Image(systemName: "questionmark.square.dashed")
                 .font(.title2)
                 .frame(width: 44, height: 44)
-                .foregroundStyle(selectedFilter == .unclassified ? .white : .gray)
-                .background(selectedFilter == .unclassified ? Color.blue : Color.gray.opacity(0.1))
-                .clipShape(Circle())
+                .foregroundStyle(selectedFilter == .unclassified ? AppTheme.onAccent : AppTheme.secondaryText)
+                .background(selectedFilter == .unclassified ? AppTheme.accent : AppTheme.inset)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             
             Text("未分类")
                 .font(.caption)
                 .fontWeight(selectedFilter == .unclassified ? .bold : .regular)
-                .foregroundStyle(selectedFilter == .unclassified ? .black : .gray)
+                .foregroundStyle(selectedFilter == .unclassified ? AppTheme.text : AppTheme.secondaryText)
         }
         .onTapGesture {
             withAnimation {
@@ -466,20 +434,20 @@ struct ContentView: View {
                 Image(systemName: "plus")
                     .font(.title2)
                     .frame(width: 44, height: 44)
-                    .foregroundStyle(.gray)
-                    .background(Color.gray.opacity(0.1))
-                    .clipShape(Circle())
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .background(AppTheme.inset)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                 
                 Text("添加")
                     .font(.caption)
-                    .foregroundStyle(.gray)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
     }
     
     // 处理拖拽放置逻辑
     private func handleDrop(items: [String], to targetContainer: Container?) {
-        var idsToProcess = Set(items)
+        var idsToProcess = Set(items.flatMap { $0.split(separator: ",").map(String.init) })
         
         // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
         if !selectedItems.isEmpty {
@@ -525,6 +493,21 @@ struct ContentView: View {
         return max(height, 60.0) // 最小高度 60
     }
     
+    private var inventoryHeading: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(isEditing ? "已选 \(selectedItems.count) 件" : "物品贴纸")
+                .font(.system(.headline, design: .rounded))
+                .foregroundStyle(AppTheme.text)
+            Spacer()
+            Text(isEditing ? "拖进容器即可收纳" : "\(currentItems.count) 件 · 双指缩放")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+        .padding(.horizontal, AppTheme.Layout.pagePadding)
+        .padding(.vertical, 12)
+        .background(AppTheme.background)
+    }
+
     private var itemsGridView: some View {
         ScrollView {
             let filteredItems = currentItems.sorted { $0.createdDate > $1.createdDate }
@@ -706,8 +689,8 @@ struct ContentView: View {
         }
         .background(
             ZStack {
-                Color.white
-                DotGridBackground(spacing: 20, dotColor: .gray.opacity(0.3))
+                AppTheme.background
+                DotGridBackground(spacing: 24, dotSize: 1, dotColor: AppTheme.line.opacity(0.75))
             }
         )
         // 拖拽时禁用滚动，防止列表滑动到最底部
@@ -725,10 +708,10 @@ struct ContentView: View {
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Image(systemName: "cube.box")
                 .font(.system(size: 50))
-                .foregroundStyle(.gray.opacity(0.3))
+                .foregroundStyle(AppTheme.accent.opacity(0.4))
             
             Group {
                 switch selectedFilter {
@@ -740,7 +723,12 @@ struct ContentView: View {
                     Text("\(container.name) 是空的")
                 }
             }
-            .foregroundStyle(.gray)
+            .font(.system(.headline, design: .rounded))
+            .foregroundStyle(AppTheme.secondaryText)
+            Button { showAddSheet = true } label: {
+                Label("添加一件物品", systemImage: "plus")
+            }
+            .buttonStyle(AppButtonStyle())
         }
         .padding(.top, 50)
         .frame(maxWidth: .infinity)
@@ -853,23 +841,12 @@ struct ContentView: View {
         }
     }
     
-    private func checkAITimeout() {
-        var hasTimeoutItems = false
-        
-        for item in allItems {
-            if item.checkAITimeout() {
-                hasTimeoutItems = true
-            }
-        }
-        
-        if hasTimeoutItems {
-            try? modelContext.save()
-        }
-    }
-
     private func initializeDefaultContainers() {
-        // 每次进入首页都检查一次 AI 超时情况
-        checkAITimeout()
+        do {
+            try ItemRepository.clearDisabledRecognition(in: allItems, context: modelContext)
+        } catch {
+            print("旧识别状态清理失败，下次进入时重试：\(error.localizedDescription)")
+        }
         
         // 使用 UserDefaults 来检查是否已经初始化过
         let hasInitialized = UserDefaults.standard.bool(forKey: hasInitializedKey)
@@ -939,9 +916,9 @@ struct ContainerTabItem: View {
             Image(systemName: container.icon)
                 .font(.title2)
                 .frame(width: 44, height: 44)
-                .foregroundStyle(isSelected ? .white : .primary)
-                .background(isSelected ? Color.blue : Color.gray.opacity(0.1))
-                .clipShape(Circle())
+                .foregroundStyle(isSelected ? AppTheme.onAccent : AppTheme.secondaryText)
+                .background(isSelected ? AppTheme.accent : AppTheme.inset)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 // 拖拽高亮效果
                 .scaleEffect(isTargeted ? 1.2 : 1.0)
                 .animation(.spring, value: isTargeted)
@@ -949,7 +926,7 @@ struct ContainerTabItem: View {
             Text(container.name)
                 .font(.caption)
                 .fontWeight(isSelected ? .bold : .regular)
-                .foregroundStyle(isSelected ? .black : .gray)
+                .foregroundStyle(isSelected ? AppTheme.text : AppTheme.secondaryText)
         }
         .overlay(alignment: .top) {
             if isTargeted {
@@ -1008,8 +985,8 @@ struct ItemGridCell: View {
             
             if isEditing {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? .blue : .gray)
-                    .background(Circle().fill(.white))
+                    .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.secondaryText)
+                    .background(Circle().fill(AppTheme.surface))
                     .padding(8)
             }
         }

@@ -8,6 +8,10 @@
 import Foundation
 import SwiftData
 
+nonisolated enum ItemLimits {
+    static let quantityRange = 1...999
+}
+
 // 定义分类枚举
 enum Category: String, CaseIterable, Codable {
     case clothes = "衣服"
@@ -46,7 +50,7 @@ final class Item {
     // 物品名称/描述 (例如：棕色羽绒服)
     var name: String
     
-    // AI 处理状态
+    // 旧识别服务的兼容字段：停用服务后保留，避免影响已有数据库结构。
     var aiStatusRawValue: String = AIProcessingStatus.none.rawValue
     
     var aiStatus: AIProcessingStatus {
@@ -54,7 +58,7 @@ final class Item {
         set { aiStatusRawValue = newValue.rawValue }
     }
     
-    // AI 请求开始时间 (用于超时判断)
+    // 旧识别请求时间。停用时清空，字段继续保留以兼容旧数据。
     var aiRequestDate: Date?
     
     // 物品分类 (例如：衣服、工具、药品)

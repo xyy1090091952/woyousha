@@ -1,168 +1,83 @@
-//
-//  ItemDetailView.swift
-//  woyousha
-//
-//  Created by ByteDance on 2/27/26.
-//
-
 import SwiftUI
 import SwiftData
 
 struct ItemDetailView: View {
     let item: Item
-    
     @State private var showEditSheet = false
-    
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // 物品大图
-                if let imageData = item.imageData, let uiImage = UIImage(data: imageData) {
-                    HStack {
-                        Spacer()
-                        ZStack {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxHeight: 350)
-                                // 恢复普通投影，因为我们已经生成了带白边的图片
-                                .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 4)
-                                .padding(10) // 给阴影留出空间
-                            
-                            // AI 处理状态 Tooltip
-                            if item.aiStatus == .processing || item.aiStatus == .pending {
-                                VStack {
-                                    ProgressView()
-                                        .controlSize(.large)
-                                        .tint(.white)
-                                    Text("AI 识别中...")
-                                        .font(.headline)
-                                        .foregroundStyle(.white)
-                                        .padding(.top, 8)
-                                }
-                                .padding(20)
-                                .background(Color.black.opacity(0.6))
-                                .cornerRadius(12)
-                            }
-                        }
-                        Spacer()
-                    }
-                    .padding(.top, 10)
-                } else {
-                    // 没有图片时的占位符
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.1))
-                        .frame(height: 200)
-                        .overlay(
-                            VStack(spacing: 10) {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 50))
-                                    .foregroundStyle(.gray)
-                                Text("暂无图片")
-                                    .foregroundStyle(.gray)
-                            }
-                        )
-                        .cornerRadius(12)
-                }
-                
-                // 物品详细信息
-                VStack(alignment: .leading, spacing: 16) {
+                ItemPhotoStage(
+                    image: item.imageData.flatMap { UIImage(data: $0) }, height: 300,
+                    emptyTitle: "还没有照片", emptySubtitle: "可以在编辑里补一张"
+                )
+                VStack(alignment: .leading, spacing: 12) {
                     Text(item.name)
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                    
-                    HStack {
-                        Label(item.category.rawValue, systemImage: "tag.fill")
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.blue.opacity(0.1))
-                            .foregroundStyle(.blue)
-                            .cornerRadius(8)
-                        
-                        Spacer()
-                        
-                        Text(item.createdDate, format: Date.FormatStyle(date: .numeric, time: .standard))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    
-                    Divider()
-                    
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("位置", systemImage: "location.fill")
-                                .font(.headline)
-                            
-                            if let container = item.container {
-                                Text(container.name + (item.location.isEmpty ? "" : " - \(item.location)"))
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text(item.location.isEmpty ? "未指定位置" : item.location)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("数量", systemImage: "number.square.fill")
-                                .font(.headline)
-                            Text("\(item.quantity)")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    if !item.note.isEmpty {
-                        Divider()
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("备注", systemImage: "note.text")
-                                .font(.headline)
-                            Text(item.note)
-                                .foregroundStyle(.secondary)
-                        }
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        .foregroundStyle(AppTheme.text)
+                        .textSelection(.enabled)
+                    Label(item.category.rawValue, systemImage: item.category.symbol)
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.accent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(AppTheme.inset, in: Capsule())
+                }
+                AppSection("收纳信息") {
+                    informationRow("存放容器", value: item.container?.name ?? "未分类", symbol: "archivebox")
+                    Divider().overlay(AppTheme.line)
+                    informationRow("具体位置", value: item.location.isEmpty ? "暂未填写" : item.location, symbol: "mappin")
+                    Divider().overlay(AppTheme.line)
+                    informationRow("数量", value: "\(item.quantity) 件", symbol: "square.stack")
+                }
+                if !item.note.isEmpty {
+                    AppSection("小备注") {
+                        Text(item.note)
+                            .foregroundStyle(AppTheme.secondaryText)
+                            .textSelection(.enabled)
                     }
                 }
-                .padding(.horizontal)
+                Text("收好于 \(item.createdDate.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
             }
-            .padding()
+            .padding(AppTheme.Layout.pagePadding)
         }
+        .background(AppTheme.background)
+        .navigationTitle("物品")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                // 仅当 AI 处理完成或无需处理时才允许编辑
-                // 避免用户修改正在被后台任务更新的数据
-                if item.aiStatus == .processing || item.aiStatus == .pending {
-                    ProgressView()
-                        .padding(.trailing, 8)
-                } else {
-                    Button("编辑") {
-                        showEditSheet = true
-                    }
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("编辑") { showEditSheet = true }
             }
         }
-        .sheet(isPresented: $showEditSheet) {
-            AddItemView(itemToEdit: item)
-        }
-        .onAppear {
-            checkTimeout()
-        }
+        .toolbarBackground(AppTheme.background, for: .navigationBar)
+        .tint(AppTheme.accent)
+        .sheet(isPresented: $showEditSheet) { AddItemView(itemToEdit: item) }
     }
-    
-    private func checkTimeout() {
-        // 检查并处理超时
-        _ = item.checkAITimeout()
+
+    private func informationRow(_ title: String, value: String, symbol: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .foregroundStyle(AppTheme.accent)
+                .frame(width: 22)
+            Text(title).foregroundStyle(AppTheme.secondaryText)
+            Spacer(minLength: 8)
+            Text(value)
+                .foregroundStyle(AppTheme.text)
+                .multilineTextAlignment(.trailing)
+        }
+        .font(.subheadline)
     }
 }
 
 #Preview {
-    do {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Item.self, configurations: config)
-        let item = Item(name: "测试物品", category: .clothes, quantity: 1, location: "衣柜", note: "这是一个测试备注")
-        return ItemDetailView(item: item)
-            .modelContainer(container)
-    } catch {
-        return Text("Preview Error: \(error.localizedDescription)")
+    NavigationStack {
+        ItemDetailView(item: Item(name: "蓝色保温杯", quantity: 1, location: "第二层"))
     }
+    .modelContainer(for: [Item.self, Container.self], inMemory: true)
 }

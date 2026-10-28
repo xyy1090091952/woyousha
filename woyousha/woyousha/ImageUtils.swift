@@ -17,7 +17,7 @@ struct ImageUtils {
     
     // 共享 CIContext，避免重复创建带来的内存和性能开销
     // 禁用颜色管理以提高性能
-    private static let context = CIContext(options: [.workingColorSpace: NSNull()])
+    nonisolated private static let context = CIContext(options: [.workingColorSpace: NSNull()])
     
     /// 压缩图片尺寸 (Downsampling)
     /// - Parameters:
@@ -26,22 +26,29 @@ struct ImageUtils {
     /// - Returns: 压缩后的图片
     nonisolated static func resizeImage(_ image: UIImage, maxDimension: CGFloat = 1024) -> UIImage {
         let size = image.size
+        guard size.width > 0, size.height > 0 else { return image }
         let aspectRatio = size.width / size.height
         
         // 如果图片本身就很小，直接返回
-        if max(size.width, size.height) <= maxDimension {
+        if max(size.width, size.height) <= maxDimension && image.scale == 1 && image.imageOrientation == .up {
             return image
         }
         
-        var newSize: CGSize
-        if size.width > size.height {
+        var newSize = size
+        if max(size.width, size.height) <= maxDimension {
+            newSize = size
+        } else if size.width > size.height {
             newSize = CGSize(width: maxDimension, height: maxDimension / aspectRatio)
         } else {
             newSize = CGSize(width: maxDimension * aspectRatio, height: maxDimension)
         }
         
         // 使用 UIGraphicsImageRenderer 进行重绘 (高质量缩放)
-        let renderer = UIGraphicsImageRenderer(size: newSize)
+        // 固定 1 倍像素，避免 Retina 屏把 1024px 图片重新放大为 3072px。
+        // 重绘也统一照片方向，让预览、抠图和保存保持一致。
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
         return renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: newSize))
         }
@@ -74,10 +81,7 @@ struct ImageUtils {
     private static func removeBackgroundNew(ciImage: CIImage, originalOrientation: UIImage.Orientation) async -> UIImage? {
         // 提前检测模拟器环境，避免无效请求
         #if targetEnvironment(simulator)
-        print("⚠️ 检测到模拟器环境，Vision 抠图不支持，已自动降级为原图")
-        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
-            return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
-        }
+        print("⚠️ 模拟器保留原图，主体分离需要真机验证")
         return nil
         #else
         return await Task.detached(priority: .userInitiated) {
@@ -90,7 +94,7 @@ struct ImageUtils {
                 try handler.perform([request])
                 
                 // 获取结果
-                guard let result = request.results?.first else { return nil }
+                guard let result = request.results?.first, !result.allInstances.isEmpty else { return nil }
                 
                 // 获取遮罩 (Mask)
                 let maskPixelBuffer = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
@@ -117,13 +121,7 @@ struct ImageUtils {
             } catch {
                 print("❌ 抠图失败: \(error)")
                 
-                // 即使失败也需要创建 context 来转换图片
-                let tempContext = CIContext(options: [.workingColorSpace: NSNull()])
-                
-                // 将 CIImage 转回 UIImage 并返回
-                if let cgImage = tempContext.createCGImage(ciImage, from: ciImage.extent) {
-                    return UIImage(cgImage: cgImage, scale: 1.0, orientation: originalOrientation)
-                }
+                // 由录入状态统一保留原图，并明确提示没有成功抠图。
                 return nil
             }
         }.value
@@ -135,7 +133,7 @@ struct ImageUtils {
     ///   - image: 输入的透明背景图片
     ///   - thickness: 描边宽度
     /// - Returns: 带描边的图片
-    static func addWhiteBorder(to image: UIImage, thickness: CGFloat = 12) -> UIImage? {
+    nonisolated static func addWhiteBorder(to image: UIImage, thickness: CGFloat = 12) -> UIImage? {
         guard let cgImage = image.cgImage else { return nil }
         let ciImage = CIImage(cgImage: cgImage)
         
@@ -222,7 +220,7 @@ struct ImageUtils {
 
 // 扩展 UIImage 以支持透明像素裁剪
 extension UIImage {
-    func trimmingTransparentPixels(maximumAlphaChannel: UInt8 = 0) -> UIImage? {
+    nonisolated func trimmingTransparentPixels(maximumAlphaChannel: UInt8 = 0) -> UIImage? {
         guard let cgImage = cgImage else { return nil }
         
         let width = cgImage.width

@@ -151,7 +151,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = woyousha/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Oyoha;
-				INFOPLIST_KEY_NSCameraUsageDescription = "我们需要使用相机来拍摄物品照片，以便进行AI识别和记录。";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍摄物品照片，制作贴纸并记录物品。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "我们需要访问您的相册来选择物品照片。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -189,7 +189,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = woyousha/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Oyoha;
-				INFOPLIST_KEY_NSCameraUsageDescription = "我们需要使用相机来拍摄物品照片，以便进行AI识别和记录。";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍摄物品照片，制作贴纸并记录物品。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "我们需要访问您的相册来选择物品照片。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

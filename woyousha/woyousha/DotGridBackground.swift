@@ -10,7 +10,7 @@ import SwiftUI
 struct DotGridBackground: View {
     var spacing: CGFloat = 20
     var dotSize: CGFloat = 2
-    var dotColor: Color = .gray.opacity(0.2)
+    var dotColor: Color = AppTheme.line
     
     var body: some View {
         GeometryReader { geometry in
@@ -28,7 +28,7 @@ struct DotGridBackground: View {
             }
         }
         .ignoresSafeArea()
-        .background(Color.white) // 背景底色
+        .background(AppTheme.background)
     }
 }
 
