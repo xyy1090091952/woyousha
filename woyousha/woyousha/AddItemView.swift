@@ -10,11 +10,16 @@ struct AddItemView: View {
     @State private var photosPickerItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var showPhotoPicker = false
-    @State private var openLibraryAfterCamera = false
+    @State private var cameraAccess = CameraController()
+    @State private var pendingCameraImage: UIImage?
+    @State private var pendingCameraError: String?
+    @State private var hasLoadedInitialImage = false
+    private let initialImage: UIImage?
     private let isEditing: Bool
 
-    init(defaultContainer: Container? = nil, itemToEdit: Item? = nil) {
+    init(defaultContainer: Container? = nil, itemToEdit: Item? = nil, initialImage: UIImage? = nil) {
         isEditing = itemToEdit != nil
+        self.initialImage = initialImage
         _editor = State(initialValue: ItemEditorModel(item: itemToEdit, defaultContainer: defaultContainer))
     }
 
@@ -113,23 +118,33 @@ struct AddItemView: View {
                 .background(AppTheme.surface)
             }
             .fullScreenCover(isPresented: $showCamera, onDismiss: {
-                // 相机先关闭再打开相册，避免两个弹层互相争抢。
-                if openLibraryAfterCamera {
-                    openLibraryAfterCamera = false
-                    showPhotoPicker = true
+                // 等全屏相机退场完成再处理图片，避免页面切换取消新照片任务。
+                if let image = pendingCameraImage {
+                    pendingCameraImage = nil
+                    editor.selectCameraImage(image)
+                }
+                if let message = pendingCameraError {
+                    pendingCameraError = nil
+                    editor.errorMessage = message
                 }
             }) {
                 CameraView(onCapture: { image in
-                    editor.selectCameraImage(image)
+                    pendingCameraImage = image
                     showCamera = false
-                }, onChooseLibrary: {
-                    openLibraryAfterCamera = true
+                }, onCancel: {
+                    showCamera = false
+                }, onError: { message in
+                    pendingCameraError = message
                     showCamera = false
                 })
+                .ignoresSafeArea()
             }
             .photosPicker(isPresented: $showPhotoPicker, selection: $photosPickerItem, matching: .images)
             .onChange(of: photosPickerItem) { _, selection in editor.selectPhoto(selection) }
-            .onDisappear { editor.cancelPhotoTask() }
+            .onDisappear {
+                // 打开全屏相机同样会触发 onDisappear，但并没有退出录入。
+                if !showCamera { editor.cancelPhotoTask() }
+            }
             .alert("暂时没有完成", isPresented: Binding(
                 get: { editor.errorMessage != nil },
                 set: { if !$0 { editor.errorMessage = nil } }
@@ -141,6 +156,12 @@ struct AddItemView: View {
         }
         .tint(AppTheme.accent)
         .interactiveDismissDisabled(editor.isSaving)
+        .task {
+            // 从拍摄流程进入时仅处理一次照片，表单刷新不重新抠图。
+            guard !hasLoadedInitialImage else { return }
+            hasLoadedInitialImage = true
+            if let initialImage { editor.selectCameraImage(initialImage) }
+        }
     }
 
     private var photoSection: some View {
@@ -174,11 +195,19 @@ struct AddItemView: View {
                     }
                 }
             HStack(spacing: 12) {
-                Button { showCamera = true } label: {
-                    Label("拍一张", systemImage: "camera")
+                Button {
+                    Task {
+                        if await cameraAccess.prepare() {
+                            pendingCameraImage = nil
+                            showCamera = true
+                        }
+                    }
+                } label: {
+                    Label(cameraAccess.isRequesting ? "正在打开…" : "拍一张", systemImage: "camera")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AppButtonStyle())
+                .disabled(cameraAccess.isRequesting)
                 Button {
                     // 允许重新选取同一张照片。
                     photosPickerItem = nil
@@ -193,6 +222,18 @@ struct AddItemView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
         }
+        .alert("无法打开相机", isPresented: Binding(
+            get: { cameraAccess.accessError != nil },
+            set: { if !$0 { cameraAccess.accessError = nil } }
+        )) {
+            if cameraAccess.accessError == .denied {
+                Button("打开设置") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+            }
+            Button("从相册选") { showPhotoPicker = true }
+            Button("取消", role: .cancel) { cameraAccess.accessError = nil }
+        } message: { Text(cameraAccess.errorMessage) }
     }
 }
 

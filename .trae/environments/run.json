@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "defaultActionId": "ios-device",
+  "actions": [
+    {
+      "id": "ios-device",
+      "name": "在连接的 iPhone 上运行",
+      "command": "bash .trae/environments/scripts/run-ios-device.sh",
+      "cwd": ".",
+      "background": false,
+      "source": "agent",
+      "open": {
+        "type": "terminal"
+      }
+    }
+  ]
+}

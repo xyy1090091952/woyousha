@@ -105,12 +105,12 @@ struct ContentView: View {
                     draggingItems.removeAll() // 确保拖拽状态也清除
                 }
             }
-            .sheet(isPresented: $showAddSheet) {
+            .fullScreenCover(isPresented: $showAddSheet) {
                 // 如果当前选中的是具体容器，则默认选中该容器
                 if case .specific(let container) = selectedFilter {
-                    AddItemView(defaultContainer: container)
+                    ItemCaptureFlow(defaultContainer: container)
                 } else {
-                    AddItemView()
+                    ItemCaptureFlow(defaultContainer: nil)
                 }
             }
             .sheet(isPresented: $showAddContainerSheet) {
@@ -209,9 +209,10 @@ struct ContentView: View {
     private var homeHeaderView: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
+                StorageBuddy().frame(width: 42, height: 42).padding(.trailing, 4)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("我的小天地")
-                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .font(.system(.title2, design: .rounded, weight: .heavy))
                         .foregroundStyle(AppTheme.text)
                     Text("\(allItems.count) 件物品 · \(containers.count) 个容器")
                         .font(.caption)
@@ -221,33 +222,21 @@ struct ContentView: View {
                 if !isEditing {
                     Button(action: { showAddSheet = true }) {
                         Image(systemName: "plus")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(AppTheme.onAccent)
-                            .frame(width: 44, height: 44)
-                            .background(AppTheme.accent, in: Circle())
                     }
-                    .accessibilityLabel("添加物品")
+                    .buttonStyle(ToyIconButtonStyle(isPrimary: true))
+                    .accessibilityLabel("拍照添加物品")
                     .transition(.opacity)
                 }
-                Button { showDecorationSheet = true } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 18))
-                        .foregroundStyle(AppTheme.accent)
-                        .frame(width: 44, height: 44)
-                        .background(AppTheme.surface, in: Circle())
-                }
-                .accessibilityLabel("装修小房间")
                 Button(action: {
                     withAnimation {
                         isEditing.toggle()
                         selectedItems.removeAll()
                     }
                 }) {
-                    Text(isEditing ? "完成" : "编辑")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.accent)
-                        .frame(minWidth: 44, minHeight: 44)
+                    Image(systemName: isEditing ? "checkmark" : "checklist")
                 }
+                .buttonStyle(ToyIconButtonStyle())
+                .accessibilityLabel(isEditing ? "完成编辑" : "编辑物品")
             }
             .padding(.horizontal, AppTheme.Layout.pagePadding)
             .padding(.vertical, 12)
@@ -256,8 +245,17 @@ struct ContentView: View {
                 // 画布内容随抽屉收起一起裁剪，避免房间穿到物品列表上。
                 .clipped()
                 .overlay(alignment: .bottomTrailing) { homeHeaderButtonGroup }
+                .overlay(alignment: .bottomLeading) {
+                    Button { showDecorationSheet = true } label: {
+                        Label("布置房间", systemImage: "paintbrush.pointed.fill")
+                            .font(.system(.subheadline, design: .rounded, weight: .heavy))
+                            .padding(.horizontal, 12)
+                    }
+                    .buttonStyle(ToyIconButtonStyle())
+                    .padding(.leading, 20).padding(.bottom, 38)
+                }
         }
-        .background(AppTheme.inset.ignoresSafeArea(edges: .top))
+        .background(AppTheme.blueInset.ignoresSafeArea(edges: .top))
         // 确保 ZIndex 正确，避免被 containerListView 覆盖时出现背景穿透
         .zIndex(0)
         // 全屏装修模式
@@ -294,19 +292,10 @@ struct ContentView: View {
                     }
                 }
             }) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.surface.opacity(0.95))
-                    
-                    // 大面板状态下的图标 (准备变小)
-                    Image(systemName: "arrow.down.right.and.arrow.up.left")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.accent)
-                        .rotationEffect(.degrees(homeHeaderHeight == maxHeaderHeight ? 0 : 180))
-                }
+                Image(systemName: homeHeaderHeight == maxHeaderHeight ? "chevron.up" : "chevron.down")
                 .frame(width: buttonSize, height: buttonSize)
             }
-            .buttonStyle(NoButtonFeedbackStyle())
+            .buttonStyle(ToyIconButtonStyle())
             .accessibilityLabel(homeHeaderHeight == maxHeaderHeight ? "收起小房间" : "展开小房间")
         }
         .padding(.trailing, 16)
@@ -316,17 +305,10 @@ struct ContentView: View {
     // 封装圆形图标按钮
     private func circleIconButton(systemName: String, buttonSize: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.surface.opacity(0.95))
-                
-                Image(systemName: systemName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppTheme.accent)
-            }
+            Image(systemName: systemName)
             .frame(width: buttonSize, height: buttonSize)
         }
-        .buttonStyle(NoButtonFeedbackStyle())
+        .buttonStyle(ToyIconButtonStyle())
     }
     
     private var containerListView: some View {
@@ -384,12 +366,7 @@ struct ContentView: View {
     // 拆分出单独的视图组件，解决 ViewBuilder 过于复杂的问题
     private var allContainerButton: some View {
         VStack(spacing: 4) {
-            Image(systemName: "square.grid.2x2")
-                .font(.title2)
-                .frame(width: 44, height: 44)
-                .foregroundStyle(selectedFilter == .all ? AppTheme.onAccent : AppTheme.secondaryText)
-                .background(selectedFilter == .all ? AppTheme.accent : AppTheme.inset)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+            ContainerBadge(symbol: "square.grid.2x2.fill", isSelected: selectedFilter == .all)
             
             Text("全部")
                 .font(.caption)
@@ -405,12 +382,7 @@ struct ContentView: View {
     
     private var unclassifiedContainerButton: some View {
         VStack(spacing: 4) {
-            Image(systemName: "questionmark.square.dashed")
-                .font(.title2)
-                .frame(width: 44, height: 44)
-                .foregroundStyle(selectedFilter == .unclassified ? AppTheme.onAccent : AppTheme.secondaryText)
-                .background(selectedFilter == .unclassified ? AppTheme.accent : AppTheme.inset)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+            ContainerBadge(symbol: "tray.fill", isSelected: selectedFilter == .unclassified)
             
             Text("未分类")
                 .font(.caption)
@@ -431,12 +403,7 @@ struct ContentView: View {
     private var addContainerButton: some View {
         Button(action: { showAddContainerSheet = true }) {
             VStack(spacing: 4) {
-                Image(systemName: "plus")
-                    .font(.title2)
-                    .frame(width: 44, height: 44)
-                    .foregroundStyle(AppTheme.secondaryText)
-                    .background(AppTheme.inset)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                ContainerBadge(symbol: "plus")
                 
                 Text("添加")
                     .font(.caption)
@@ -690,7 +657,6 @@ struct ContentView: View {
         .background(
             ZStack {
                 AppTheme.background
-                DotGridBackground(spacing: 24, dotSize: 1, dotColor: AppTheme.line.opacity(0.75))
             }
         )
         // 拖拽时禁用滚动，防止列表滑动到最底部
@@ -709,9 +675,7 @@ struct ContentView: View {
     
     private var emptyStateView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "cube.box")
-                .font(.system(size: 50))
-                .foregroundStyle(AppTheme.accent.opacity(0.4))
+            StorageBuddy().frame(width: 72, height: 72).padding(.bottom, 8)
             
             Group {
                 switch selectedFilter {
@@ -913,20 +877,16 @@ struct ContainerTabItem: View {
     
     var body: some View {
         VStack(spacing: 4) {
-            Image(systemName: container.icon)
-                .font(.title2)
-                .frame(width: 44, height: 44)
-                .foregroundStyle(isSelected ? AppTheme.onAccent : AppTheme.secondaryText)
-                .background(isSelected ? AppTheme.accent : AppTheme.inset)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+            ContainerBadge(furnitureID: FurnitureConfig.styleID(name: container.name, icon: container.icon, savedID: container.furnitureImageName), isSelected: isSelected)
                 // 拖拽高亮效果
                 .scaleEffect(isTargeted ? 1.2 : 1.0)
                 .animation(.spring, value: isTargeted)
             
             Text(container.name)
-                .font(.caption)
-                .fontWeight(isSelected ? .bold : .regular)
+                .font(.system(.caption, design: .rounded, weight: .bold))
                 .foregroundStyle(isSelected ? AppTheme.text : AppTheme.secondaryText)
+                .lineLimit(1)
+                .frame(width: 64)
         }
         .overlay(alignment: .top) {
             if isTargeted {

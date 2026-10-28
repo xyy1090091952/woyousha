@@ -24,15 +24,8 @@ struct ContainerEditView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     VStack(spacing: 12) {
-                        if let selectedFurnitureImage {
-                            Image(selectedFurnitureImage)
-                                .resizable().scaledToFit().frame(height: 120)
-                        } else {
-                            Image(systemName: icon)
-                                .font(.system(size: 56, weight: .light))
-                                .foregroundStyle(AppTheme.accent)
-                                .frame(height: 120)
-                        }
+                        PixelFurnitureView(styleID: FurnitureConfig.styleID(name: name, icon: icon, savedID: selectedFurnitureImage))
+                            .frame(height: 120)
                         Text(name.isEmpty ? "为物品准备一个家" : name)
                             .font(.system(.title3, design: .rounded, weight: .semibold))
                             .foregroundStyle(AppTheme.text)
@@ -63,7 +56,7 @@ struct ContainerEditView: View {
                     AppSection("小房间里的造型") {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                furnitureChoice(imageName: nil, title: "默认图标")
+                                furnitureChoice(imageName: nil, title: "自动造型")
                                 ForEach(FurnitureConfig.all) { config in
                                     furnitureChoice(imageName: config.imageName, title: config.name)
                                 }
@@ -126,15 +119,19 @@ struct ContainerEditView: View {
     }
 
     private func furnitureChoice(imageName: String?, title: String) -> some View {
-        Button { selectedFurnitureImage = imageName } label: {
+        Button {
+            // 新建时提供对应的默认名称；用户自己写的容器名称继续保留。
+            let previousName = selectedFurnitureImage.flatMap { FurnitureConfig.get(byImageName: $0)?.name }
+            selectedFurnitureImage = imageName
+            if let imageName, let config = FurnitureConfig.get(byImageName: imageName),
+               name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name == previousName {
+                name = config.name
+                icon = config.icon
+            }
+        } label: {
             VStack(spacing: 8) {
-                Group {
-                    if let imageName {
-                        Image(imageName).resizable().scaledToFit().padding(10)
-                    } else {
-                        Image(systemName: icon).font(.system(size: 30)).foregroundStyle(AppTheme.accent)
-                    }
-                }
+                PixelFurnitureView(styleID: FurnitureConfig.styleID(name: name, icon: icon, savedID: imageName))
+                .padding(8)
                 .frame(width: 80, height: 80)
                 .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 20))
                 .overlay {

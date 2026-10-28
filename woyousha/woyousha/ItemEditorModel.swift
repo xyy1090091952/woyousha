@@ -106,6 +106,7 @@ final class ItemEditorModel {
         }
         do {
             try ItemRepository.save(draft, editing: item, in: context)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
             return true
         } catch {
             errorMessage = "物品没有保存成功，请重试。"

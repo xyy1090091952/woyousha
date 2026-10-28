@@ -23,10 +23,9 @@ struct StickerGridItemView: View {
                             .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 4)
                     } else {
                         Image(systemName: item.category.symbol)
-                            .font(.system(size: height * 0.35, weight: .light))
-                            .foregroundStyle(AppTheme.accent.opacity(0.65))
+                            .font(.system(size: height * 0.35, weight: .bold))
+                            .foregroundStyle(AppTheme.blue)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(AppTheme.inset.opacity(0.65), in: RoundedRectangle(cornerRadius: 22))
                     }
                 }
                 .frame(height: height)
@@ -35,21 +34,20 @@ struct StickerGridItemView: View {
                     Text("×\(item.quantity)")
                         .font(.system(.caption, design: .rounded, weight: .semibold))
                         .monospacedDigit()
-                        .foregroundStyle(AppTheme.accent)
+                        .foregroundStyle(AppTheme.accentText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(AppTheme.surface, in: Capsule())
-                        .overlay { Capsule().strokeBorder(AppTheme.line, lineWidth: 1) }
                 }
             }
             Text(item.name)
-                .font(.system(height < 100 ? .caption : .subheadline, design: .rounded, weight: .semibold))
+                .font(.system(height < 100 ? .caption : .headline, design: .rounded, weight: .heavy))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .foregroundStyle(AppTheme.text)
                 .frame(maxWidth: .infinity)
         }
-        .padding(6)
+        .padding(10)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(item.name)，\(item.quantity) 件")
     }
