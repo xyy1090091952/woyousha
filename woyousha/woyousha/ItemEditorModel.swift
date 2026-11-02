@@ -14,6 +14,7 @@ final class ItemEditorModel {
     private(set) var image: UIImage?
     private(set) var photoState: PhotoState = .empty
     private(set) var processingIsTakingLong = false
+    private(set) var lastPhotoPerformance: PhotoPerformanceTrace.Snapshot?
     private(set) var isSaving = false
     var errorMessage: String?
 
@@ -29,6 +30,7 @@ final class ItemEditorModel {
         self.item = item
         draft = ItemDraft(item: item, defaultContainer: defaultContainer)
         image = item?.imageData.flatMap(UIImage.init(data:))
+        lastPhotoPerformance = PhotoPerformanceStore.load()
         if image != nil { photoState = .ready }
     }
 
@@ -54,14 +56,17 @@ final class ItemEditorModel {
 
     func selectPhoto(_ selection: PhotosPickerItem?) {
         guard let selection else { return }
+        let trace = PhotoPerformanceTrace()
         let revision = beginPhotoChange()
         photoTask = Task {
             do {
+                let started = PhotoPerformanceTrace.now
                 guard let data = try await selection.loadTransferable(type: Data.self) else {
                     throw ItemPhotoProcessor.ProcessingError.unreadable
                 }
                 guard isCurrent(revision) else { return }
-                await process(.data(data), revision: revision)
+                trace.record(.albumLoad, milliseconds: (PhotoPerformanceTrace.now - started) * 1000)
+                await process(.data(data), revision: revision, trace: trace)
             } catch {
                 guard isCurrent(revision) else { return }
                 finishUnreadablePhoto()
@@ -69,14 +74,16 @@ final class ItemEditorModel {
         }
     }
 
-    func selectCameraData(_ data: Data) {
+    func selectCameraData(_ data: Data, captureTiming: PhotoCaptureTiming? = nil) {
+        let trace = PhotoPerformanceTrace(capture: captureTiming)
         let revision = beginPhotoChange()
-        photoTask = Task { await process(.data(data), revision: revision) }
+        photoTask = Task { await process(.data(data), revision: revision, trace: trace) }
     }
 
     func selectCameraImage(_ image: UIImage) {
+        let trace = PhotoPerformanceTrace()
         let revision = beginPhotoChange()
-        photoTask = Task { await process(.image(image), revision: revision) }
+        photoTask = Task { await process(.image(image), revision: revision, trace: trace) }
     }
 
     /// 用户可以结束等待；取消运算后保存同一张照片的原图，不丢失表单草稿。
@@ -147,6 +154,7 @@ final class ItemEditorModel {
     private func beginPhotoChange() -> UUID {
         cancelPhotoTask()
         previousPhotoState = photoState
+        lastPhotoPerformance = nil
         photoState = .loading
         let revision = photoRevision
         // 只改变提示，不编造进度百分比，也不靠延时掩盖实际处理速度。
@@ -162,10 +170,10 @@ final class ItemEditorModel {
         !Task.isCancelled && revision == photoRevision
     }
 
-    private func process(_ source: ItemPhotoProcessor.Source, revision: UUID) async {
+    private func process(_ source: ItemPhotoProcessor.Source, revision: UUID, trace: PhotoPerformanceTrace) async {
         guard isCurrent(revision) else { return }
         do {
-            let result = try await ItemPhotoProcessor.process(source) { [weak self] stage, preview in
+            let result = try await ItemPhotoProcessor.process(source, trace: trace) { [weak self] stage, preview in
                 guard let self, self.isCurrent(revision) else { return }
                 self.image = preview
                 self.imageChanged = true
@@ -178,11 +186,16 @@ final class ItemEditorModel {
                 }
             }
             guard isCurrent(revision) else { return }
+            trace.record(.resultDelivery, milliseconds: (PhotoPerformanceTrace.now - result.finishedUptime) * 1000)
             image = result.image
             imageChanged = true
             photoState = result.separated ? .ready : .original
             originalImage = nil
             stopSlowFeedback()
+            // 通过版本检查后才保存；取消或更换照片时，旧任务不能留下误导性的用时。
+            let performance = trace.snapshot(separated: result.separated)
+            lastPhotoPerformance = performance
+            PhotoPerformanceStore.save(performance)
         } catch {
             guard isCurrent(revision) else { return }
             finishUnreadablePhoto()

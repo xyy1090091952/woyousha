@@ -5,8 +5,11 @@ import OSLog
 
 nonisolated enum PhotoProcessingSettings {
     static let imageDimension: CGFloat = 1024
+    static let analysisDimension: CGFloat = 768
+    static let subjectCropPadding: CGFloat = 8
     static let outlineMaskDimension: CGFloat = 256
-    static let borderThickness: CGFloat = 12
+    static let borderThickness: CGFloat = 14
+    static let borderRoundingRadius: CGFloat = 4
     static let slowFeedbackDelay: TimeInterval = 2.5
 }
 
@@ -19,49 +22,71 @@ nonisolated enum ItemPhotoProcessor {
     struct Result: Sendable {
         let image: UIImage
         let separated: Bool
+        let finishedUptime: TimeInterval = PhotoPerformanceTrace.now
     }
     enum ProcessingError: Error { case unreadable }
     private static let logger = Logger(subsystem: "com.OGS.woyousha", category: "PhotoProcessing")
 
     static func process(_ source: Source,
+                        trace: PhotoPerformanceTrace = PhotoPerformanceTrace(),
                         onUpdate: @escaping @MainActor @Sendable (Stage, UIImage) -> Void) async throws -> Result {
+        trace.recordInputDelivery()
         let cancellation = VisionCancellation()
+        let submitted = PhotoPerformanceTrace.now
         let worker = Task.detached(priority: .userInitiated) {
+            trace.record(.workerScheduling, milliseconds: (PhotoPerformanceTrace.now - submitted) * 1000)
+            logger.info("Photo worker began")
             try Task.checkCancellation()
-            var started = Date()
-            let prepared = autoreleasepool {
-                switch source {
-                case .data(let data): return ImageUtils.downsample(data)
-                case .image(let image): return ImageUtils.resizeImage(image)
+            let prepared = trace.measure(.decode) {
+                autoreleasepool {
+                    switch source {
+                    case .data(let data): return ImageUtils.downsample(data)
+                    case .image(let image): return ImageUtils.resizeImage(image)
+                    }
                 }
             }
             guard let prepared else { throw ProcessingError.unreadable }
+            trace.setPreparedSize(width: Int(prepared.size.width), height: Int(prepared.size.height))
             try Task.checkCancellation()
-            logDuration("decode", since: started)
+            var deliveryStarted = PhotoPerformanceTrace.now
+            logger.info("Original preview delivery began")
             await onUpdate(.separating, prepared)
+            trace.record(.previewDelivery, milliseconds: (PhotoPerformanceTrace.now - deliveryStarted) * 1000)
+            logger.info("Original preview delivery ended")
             try Task.checkCancellation()
-            started = Date()
-            let request = VNGenerateForegroundInstanceMaskRequest()
+            logger.info("Vision request creation began")
+            let request = trace.measure(.requestCreation) { VNGenerateForegroundInstanceMaskRequest() }
+            logger.info("Vision request creation ended")
             cancellation.install(request)
             defer { cancellation.clear() }
             try Task.checkCancellation()
             let cutout: UIImage?
             do {
-                cutout = try autoreleasepool { try ImageUtils.removeBackground(from: prepared, request: request) }
+                cutout = try autoreleasepool {
+                    try ImageUtils.removeBackground(from: prepared, request: request, trace: trace)
+                }
             } catch {
                 try Task.checkCancellation()
                 logger.notice("Foreground separation unavailable: \(error.localizedDescription, privacy: .public)")
+                logPerformance(trace, separated: false)
                 return Result(image: prepared, separated: false)
             }
             try Task.checkCancellation()
-            logDuration("separate", since: started)
-            guard let cutout else { return Result(image: prepared, separated: false) }
+            guard let cutout else {
+                logPerformance(trace, separated: false)
+                return Result(image: prepared, separated: false)
+            }
+            deliveryStarted = PhotoPerformanceTrace.now
+            logger.info("Cutout preview delivery began")
             await onUpdate(.finishing, cutout)
+            trace.record(.cutoutDelivery, milliseconds: (PhotoPerformanceTrace.now - deliveryStarted) * 1000)
+            logger.info("Cutout preview delivery ended")
             try Task.checkCancellation()
-            started = Date()
-            let sticker = autoreleasepool { ImageUtils.addWhiteBorder(to: cutout) ?? cutout }
+            let sticker = trace.measure(.outline) {
+                autoreleasepool { ImageUtils.addWhiteBorder(to: cutout) ?? cutout }
+            }
             try Task.checkCancellation()
-            logDuration("outline", since: started)
+            logPerformance(trace, separated: true)
             return Result(image: sticker, separated: true)
         }
         // detached 任务不会自动继承父任务的取消，必须显式传递到任务和 Vision。
@@ -73,9 +98,12 @@ nonisolated enum ItemPhotoProcessor {
         }
     }
 
-    private static func logDuration(_ stage: String, since start: Date) {
-        let milliseconds = Int(Date().timeIntervalSince(start) * 1000)
-        logger.info("Photo stage \(stage, privacy: .public): \(milliseconds) ms")
+    private static func logPerformance(_ trace: PhotoPerformanceTrace, separated: Bool) {
+        let snapshot = trace.snapshot(separated: separated)
+        for entry in snapshot.entries {
+            logger.info("Photo stage \(entry.stage.rawValue, privacy: .public): \(Int(entry.milliseconds)) ms")
+        }
+        logger.info("Photo total: \(Int(snapshot.totalMilliseconds)) ms")
     }
 }
 

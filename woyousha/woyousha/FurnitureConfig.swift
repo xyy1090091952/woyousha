@@ -58,7 +58,19 @@ struct FurnitureConfig: Identifiable {
         FurnitureConfig(name: "小推车", icon: "cart", imageName: "cart", width: 1, depth: 1),
         FurnitureConfig(name: "镜柜", icon: "cabinet", imageName: "mirror", width: 1, depth: 1),
         FurnitureConfig(name: "墙壁", icon: "rectangle.split.3x1", imageName: "wall-panel", width: 2, depth: 1),
-        FurnitureConfig(name: "落地灯", icon: "lamp.floor", imageName: "floor-lamp", width: 1, depth: 1)
+        FurnitureConfig(name: "落地灯", icon: "lamp.floor", imageName: "floor-lamp", width: 1, depth: 1),
+        // 日常起居、学习、厨卫与出行；每个编号都有独立的等轴几何模型。
+        FurnitureConfig(name: "双人床", icon: "bed.double", imageName: "double-bed", width: 2, depth: 2),
+        FurnitureConfig(name: "床头柜", icon: "cabinet", imageName: "nightstand", width: 1, depth: 1),
+        FurnitureConfig(name: "书桌", icon: "desktopcomputer", imageName: "study-desk", width: 2, depth: 1),
+        FurnitureConfig(name: "餐椅", icon: "chair", imageName: "dining-chair", width: 1, depth: 1),
+        FurnitureConfig(name: "茶几", icon: "table.furniture", imageName: "coffee-table", width: 2, depth: 1),
+        FurnitureConfig(name: "鞋柜", icon: "cabinet", imageName: "shoe-cabinet", width: 2, depth: 1),
+        FurnitureConfig(name: "梳妆台", icon: "sparkles", imageName: "dressing-table", width: 2, depth: 1),
+        FurnitureConfig(name: "洗衣机", icon: "washer", imageName: "washing-machine", width: 1, depth: 1),
+        FurnitureConfig(name: "烤箱灶台", icon: "oven", imageName: "oven-stove", width: 1, depth: 1),
+        FurnitureConfig(name: "空调", icon: "air.conditioner.horizontal", imageName: "air-conditioner", width: 2, depth: 1),
+        FurnitureConfig(name: "行李箱", icon: "suitcase.rolling", imageName: "suitcase", width: 1, depth: 1)
     ]
     
     // 根据名称获取配置
@@ -71,13 +83,21 @@ struct FurnitureConfig: Identifiable {
         if let savedID, get(byImageName: savedID) != nil { return savedID }
         let aliases = [
             ("镜柜","mirror"),("镜子","mirror"),("厨房柜","chuwei"),("墙壁","wall-panel"),
-            ("书包","beibao"),("小推车","cart"),("推车","cart"),("床头柜","dianshigui")
+            ("书包","beibao"),("小推车","cart"),("推车","cart"),("床头柜","nightstand"),
+            ("双人床","double-bed"),("床铺","double-bed"),("电脑桌","study-desk"),("办公桌","study-desk"),
+            ("洗衣","washing-machine"),("烤箱","oven-stove"),("灶台","oven-stove"),("旅行箱","suitcase")
         ]
         if let alias = aliases.first(where: { name.contains($0.0) }) { return alias.1 }
         if let match = all.sorted(by: { $0.name.count > $1.name.count }).first(where: { name.contains($0.name) }) {
             return match.imageName
         }
         if icon.contains("refrigerator") { return "bingxiang" }
+        if icon.contains("washer") { return "washing-machine" }
+        if icon.contains("oven") { return "oven-stove" }
+        if icon.contains("air.conditioner") { return "air-conditioner" }
+        if icon.contains("suitcase") { return "suitcase" }
+        if icon.contains("bed.") { return "double-bed" }
+        if icon.contains("desktopcomputer") { return "study-desk" }
         if icon.contains("mirror") { return "mirror" }
         if icon.contains("cabinet") { return "chuwei" }
         if icon.contains("cart") { return "cart" }

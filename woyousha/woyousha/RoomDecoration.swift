@@ -10,11 +10,13 @@ nonisolated struct RoomDecoration: Identifiable, Codable, Equatable {
     var scale: Double = 1
     var isMirrored = false
     var zIndex: Int = 0
+    // 保留此旧字段以读取历史 JSON。新版本只保存正在房间里的装饰。
     var isPlaced = true
     var name: String { kind.title }
 
     enum Kind: String, Codable, CaseIterable {
         case plant, rug, window, picture, wallShelf, calendar
+        case clock, flowers, tableLamp, cactus, cushions, teddyBear, floorMirror, aquarium, speaker, petBed
         var title: String {
             switch self {
             case .plant: return "绿植"
@@ -23,6 +25,16 @@ nonisolated struct RoomDecoration: Identifiable, Codable, Equatable {
             case .picture: return "挂画"
             case .wallShelf: return "装饰置物架"
             case .calendar: return "日历"
+            case .clock: return "挂钟"
+            case .flowers: return "花瓶鲜花"
+            case .tableLamp: return "阅读台灯"
+            case .cactus: return "仙人掌"
+            case .cushions: return "靠垫"
+            case .teddyBear: return "玩偶小熊"
+            case .floorMirror: return "穿衣镜"
+            case .aquarium: return "鱼缸"
+            case .speaker: return "音箱"
+            case .petBed: return "宠物窝"
             }
         }
         var isFloorCovering: Bool { self == .rug }

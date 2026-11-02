@@ -8,27 +8,24 @@
 import SwiftUI
 
 struct DotGridBackground: View {
-    var spacing: CGFloat = 20
-    var dotSize: CGFloat = 2
-    var dotColor: Color = AppTheme.line
+    var spacing: CGFloat = StickerStyle.dotSpacing
+    var dotSize: CGFloat = StickerStyle.dotDiameter
+    var dotColor: Color = AppTheme.stickerDot
     
     var body: some View {
-        GeometryReader { geometry in
-            Canvas { context, size in
-                let rows = Int(size.height / spacing) + 1
-                let cols = Int(size.width / spacing) + 1
-                
-                for row in 0...rows {
-                    for col in 0...cols {
-                        let point = CGPoint(x: CGFloat(col) * spacing, y: CGFloat(row) * spacing)
-                        let rect = CGRect(origin: point, size: CGSize(width: dotSize, height: dotSize))
-                        context.fill(Path(ellipseIn: rect), with: .color(dotColor))
-                    }
+        Canvas { context, size in
+            let step = max(4, spacing)
+            // 从半格开始，边缘不出现半颗点；底纹只画在调用方给出的区域内。
+            for y in stride(from: step / 2, to: size.height, by: step) {
+                for x in stride(from: step / 2, to: size.width, by: step) {
+                    let rect = CGRect(x: x - dotSize / 2, y: y - dotSize / 2, width: dotSize, height: dotSize)
+                    context.fill(Path(ellipseIn: rect), with: .color(dotColor))
                 }
             }
         }
-        .ignoresSafeArea()
         .background(AppTheme.background)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

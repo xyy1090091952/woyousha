@@ -10,16 +10,22 @@ struct AddItemView: View {
     @State private var editor: ItemEditorModel
     @State private var photosPickerItem: PhotosPickerItem?
     @State private var isCameraMode: Bool
+    @State private var hasCreatedCameraPreview: Bool
     @State private var showPhotoPicker = false
     @State private var camera = CameraController()
     @State private var hasLoadedInitialImage = false
+    #if DEBUG
+    @State private var showPhotoTiming = false
+    #endif
     private let initialImage: UIImage?
     private let isEditing: Bool
 
     init(defaultContainer: Container? = nil, itemToEdit: Item? = nil, initialImage: UIImage? = nil) {
         isEditing = itemToEdit != nil
         self.initialImage = initialImage
-        _isCameraMode = State(initialValue: itemToEdit == nil && initialImage == nil)
+        let startsWithCamera = itemToEdit == nil && initialImage == nil
+        _isCameraMode = State(initialValue: startsWithCamera)
+        _hasCreatedCameraPreview = State(initialValue: startsWithCamera)
         _editor = State(initialValue: ItemEditorModel(item: itemToEdit, defaultContainer: defaultContainer))
     }
 
@@ -132,12 +138,15 @@ struct AddItemView: View {
             .onChange(of: showPhotoPicker) { _, isPresented in
                 if !isPresented, isCameraMode, scenePhase == .active { camera.setActive(true) }
             }
+            .onChange(of: isCameraMode) { _, isActive in
+                if isActive { hasCreatedCameraPreview = true }
+            }
             .onChange(of: camera.photo?.id) { _, _ in
-                guard let data = camera.consumePhoto() else { return }
+                guard let photo = camera.consumePhoto() else { return }
                 // 拍摄结果原位替换取景，只启动一次本地抠图，不另开系统确认页面。
                 isCameraMode = false
                 camera.setActive(false)
-                editor.selectCameraData(data)
+                editor.selectCameraData(photo.data, captureTiming: photo.timing)
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { camera.setActive(false) }
@@ -167,6 +176,13 @@ struct AddItemView: View {
             } message: { Text(camera.captureError ?? "") }
         }
         .tint(AppTheme.accent)
+        #if DEBUG
+        .sheet(isPresented: $showPhotoTiming) {
+            if let performance = editor.lastPhotoPerformance {
+                PhotoProcessingTimingView(snapshot: performance)
+            }
+        }
+        #endif
         .interactiveDismissDisabled(editor.isSaving)
         .task {
             // 从拍摄流程进入时仅处理一次照片，表单刷新不重新抠图。
@@ -176,16 +192,39 @@ struct AddItemView: View {
         }
     }
 
-    private var photoSection: some View {
-        VStack(spacing: 12) {
-            Group {
-                if isCameraMode {
-                    CameraView(camera: camera)
-                        .frame(height: AppTheme.Layout.photoHeight)
-                } else {
-                    ItemPhotoStage(image: editor.image)
+    private var usesCameraSizedStage: Bool { isCameraMode || hasCreatedCameraPreview }
+
+    @ViewBuilder
+    private var photoStage: some View {
+        if usesCameraSizedStage {
+            // 同一份照片比例贯穿取景和处理结果。宽度随手机变化，平板上限制最大宽度。
+            photoStageContent
+                .aspectRatio(camera.photoAspectRatio, contentMode: .fit)
+                .frame(maxWidth: CameraSettings.maximumPreviewWidth)
+                .frame(maxWidth: .infinity)
+        } else {
+            photoStageContent.frame(height: AppTheme.Layout.photoHeight)
+        }
+    }
+
+    private var photoStageContent: some View {
+        GeometryReader { geometry in
+            let height = geometry.size.height
+            ZStack {
+                if isCameraMode || hasCreatedCameraPreview {
+                    // 拍完只隐藏取景，保留 UIView/预览层的身份；后台停止相机，
+                    // 避免在贴纸回填的关键路径上同步拆除 AVCaptureVideoPreviewLayer。
+                    CameraView(camera: camera, isActive: isCameraMode)
+                        .frame(height: height)
+                        .opacity(isCameraMode ? 1 : 0)
+                        .allowsHitTesting(isCameraMode)
+                        .accessibilityHidden(!isCameraMode)
+                }
+                if !isCameraMode {
+                    ItemPhotoStage(image: editor.image, height: height)
                 }
             }
+                .frame(width: geometry.size.width, height: height)
                 .overlay(alignment: .bottom) {
                     if editor.isProcessing {
                         VStack(spacing: 8) {
@@ -227,6 +266,12 @@ struct AddItemView: View {
                         .accessibilityLabel("移除照片")
                     }
                 }
+        }
+    }
+
+    private var photoSection: some View {
+        VStack(spacing: 12) {
+            photoStage
             HStack(spacing: 12) {
                 Button {
                     if isCameraMode { camera.capture() }
@@ -260,6 +305,13 @@ struct AddItemView: View {
             Text(isCameraMode ? "照片选填，在这里拍照后自动制作贴纸" : editor.photoMessage)
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
+            #if DEBUG
+            if editor.lastPhotoPerformance != nil {
+                Button("查看处理用时") { showPhotoTiming = true }
+                    .font(.caption.weight(.semibold))
+                    .frame(minHeight: 44)
+            }
+            #endif
         }
     }
 }

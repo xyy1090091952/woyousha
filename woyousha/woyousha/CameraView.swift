@@ -5,6 +5,7 @@ import UIKit
 /// 只显示 App 内的实时取景，不打开系统相机页面。快门和相册由录入页面提供。
 struct CameraView: View {
     let camera: CameraController
+    var isActive = true
 
     var body: some View {
         ZStack {
@@ -65,7 +66,8 @@ struct CameraView: View {
         .background(AppTheme.cameraBackground)
         .clipShape(RoundedRectangle(cornerRadius: CameraSettings.cornerRadius))
         .overlay { RoundedRectangle(cornerRadius: CameraSettings.cornerRadius).strokeBorder(AppTheme.blue.opacity(0.2), lineWidth: 2) }
-        .onAppear { camera.setActive(true) }
+        .onAppear { if isActive { camera.setActive(true) } }
+        .onChange(of: isActive) { _, active in camera.setActive(active) }
         .onDisappear { camera.setActive(false) }
         .accessibilityLabel("物品拍照取景窗口")
     }
@@ -135,14 +137,22 @@ private final class PreviewView: UIView {
         case .portraitUpsideDown: angle = 270
         default: angle = CameraSettings.portraitRotation
         }
+        camera?.rotate(to: angle)
+        // 相机停止时不改连接属性；普通表单刷新也不重复设置相同方向和镜像。
+        guard camera?.state == .ready else { return }
         if let connection = previewLayer.connection {
-            if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
+            if connection.videoRotationAngle != angle, connection.isVideoRotationAngleSupported(angle) {
+                connection.videoRotationAngle = angle
+            }
             if connection.isVideoMirroringSupported {
-                connection.automaticallyAdjustsVideoMirroring = false
-                connection.isVideoMirrored = isFrontCamera
+                if connection.automaticallyAdjustsVideoMirroring {
+                    connection.automaticallyAdjustsVideoMirroring = false
+                }
+                if connection.isVideoMirrored != isFrontCamera {
+                    connection.isVideoMirrored = isFrontCamera
+                }
             }
         }
-        camera?.rotate(to: angle)
     }
 
     @objc private func focus(_ gesture: UITapGestureRecognizer) {

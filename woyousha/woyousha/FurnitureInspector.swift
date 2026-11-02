@@ -85,8 +85,8 @@ struct FurnitureInspector: View {
         .background(AppTheme.surface)
         .overlay(alignment: .top) { Rectangle().fill(AppTheme.line).frame(height: 2) }
         .sheet(isPresented: $showStyles) {
-            FurnitureStylePicker(selectedStyleID: styleID) { id in
-                _ = onAction(.style(id))
+            FurnitureCatalogPicker(selectedStyleID: styleID) { id in
+                onAction(.style(id))
             }
             .presentationDetents([.medium, .large])
         }
@@ -115,17 +115,34 @@ struct FurnitureInspector: View {
 }
 
 /// 造型选择独立成抽屉，主面板高度不变，避免打开造型时画布突然缩小。
-private struct FurnitureStylePicker: View {
+struct FurnitureCatalogPicker: View {
     @Environment(\.dismiss) private var dismiss
-    let selectedStyleID: String
-    let onSelect: (String) -> Void
+    var selectedStyleID: String? = nil
+    var title = "选择家具造型"
+    var dismissOnSelection = false
+    let onSelect: (String) -> Bool
+    @State private var searchText = ""
+    @State private var selectionFailed = false
+
+    private var filteredCatalog: [FurnitureConfig] {
+        let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return keyword.isEmpty ? FurnitureConfig.all : FurnitureConfig.all.filter {
+            $0.name.localizedStandardContains(keyword)
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 95))], spacing: 16) {
-                    ForEach(FurnitureConfig.all) { config in
-                        Button { onSelect(config.imageName) } label: {
+                    ForEach(filteredCatalog) { config in
+                        Button {
+                            if onSelect(config.imageName) {
+                                if dismissOnSelection { dismiss() }
+                            } else {
+                                selectionFailed = true
+                            }
+                        } label: {
                             VStack(spacing: 10) {
                                 PixelFurnitureView(styleID: config.imageName).frame(height: 90)
                                 Text(config.name).font(.system(.caption, design: .rounded, weight: .bold))
@@ -145,11 +162,22 @@ private struct FurnitureStylePicker: View {
                 }
                 .padding(20)
             }
+            .overlay {
+                if filteredCatalog.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                }
+            }
             .background(AppTheme.background)
             .foregroundStyle(AppTheme.text)
-            .navigationTitle("选择家具造型")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "搜索家具名称")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+            .alert("没有保存成功", isPresented: $selectionFailed) {
+                Button("知道了", role: .cancel) {}
+            } message: {
+                Text("请再试一次。")
+            }
         }
         .tint(AppTheme.accent)
     }

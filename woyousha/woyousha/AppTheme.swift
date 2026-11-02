@@ -12,6 +12,7 @@ enum AppTheme {
     static let text = adaptive(light: 0x39464D, dark: 0xECF7FB)
     static let secondaryText = adaptive(light: 0x707C83, dark: 0xA8BDC5)
     static let line = adaptive(light: 0xE3E8EB, dark: 0x38505B)
+    static let stickerDot = adaptive(light: 0xDDE4E7, dark: 0x405B66)
     static let blue = adaptive(light: 0x168CCA, dark: 0x58C4F9)
     static let blueInset = adaptive(light: 0xE7F6FE, dark: 0x203F50)
     static let yellow = Color(hex: "FFC939")
@@ -22,8 +23,8 @@ enum AppTheme {
         static let cornerRadius: CGFloat = 24
         static let controlHeight: CGFloat = 52
         static let photoHeight: CGFloat = 260
-        static let imageDimension: CGFloat = 1024
-        static let thumbnailDimension: CGFloat = 200
+        static let imageDimension = PhotoProcessingSettings.imageDimension
+        static let thumbnailDimension = StickerStyle.thumbnailDimension
         static let quantityRange = ItemLimits.quantityRange
         static let buttonDepth: CGFloat = 4
     }

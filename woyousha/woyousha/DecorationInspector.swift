@@ -35,7 +35,7 @@ struct DecorationInspector: View {
                     .disabled(decoration.kind.isFloorCovering)
                 action("置后","square.3.layers.3d.bottom.filled") { _=onAction(.backward) }
                     .disabled(decoration.kind.isFloorCovering)
-                action("收起","archivebox") { _=onAction(.store) }
+                action("删除","trash", destructive: true) { _=onAction(.delete) }
             }
             HStack(spacing:10) {
                 Button {
@@ -62,13 +62,13 @@ struct DecorationInspector: View {
         if !onAction(.scale(scaleDraft)) { scaleDraft=decoration.scale }
         onPreviewScale(nil)
     }
-    private func action(_ title:String,_ symbol:String,perform:@escaping ()->Void) -> some View {
+    private func action(_ title:String,_ symbol:String,destructive:Bool = false,perform:@escaping ()->Void) -> some View {
         Button(action:perform) {
             VStack(spacing:6) {
                 Image(systemName:symbol).font(.system(size:19,weight:.semibold))
                 Text(title).font(.caption.weight(.bold))
             }.frame(maxWidth:.infinity,minHeight:58)
-                .foregroundStyle(AppTheme.blue)
+                .foregroundStyle(destructive ? Color.red : AppTheme.blue)
                 .background(AppTheme.blueInset,in:RoundedRectangle(cornerRadius:14))
         }.buttonStyle(.plain)
     }

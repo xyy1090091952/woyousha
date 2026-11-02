@@ -69,10 +69,6 @@ struct ContentView: View {
     // 是否正在缩放 (用于防止误触)
     @State private var isScaling = false
     
-    var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 16), count: gridColumnCount)
-    }
-    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -95,6 +91,7 @@ struct ContentView: View {
             .onAppear {
                 initializeDefaultContainers()
                 // 同步 baseColumnCount 与 gridColumnCount
+                gridColumnCount = StickerStyle.clampedColumnCount(gridColumnCount)
                 baseColumnCount = CGFloat(gridColumnCount)
                 preciseColumnCount = CGFloat(gridColumnCount)
             }
@@ -208,42 +205,11 @@ struct ContentView: View {
     
     private var homeHeaderView: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                StorageBuddy().frame(width: 42, height: 42).padding(.trailing, 4)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("我的小天地")
-                        .font(.system(.title2, design: .rounded, weight: .heavy))
-                        .foregroundStyle(AppTheme.text)
-                    Text("\(allItems.count) 件物品 · \(containers.count) 个容器")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
-                }
-                Spacer(minLength: 4)
-                if !isEditing {
-                    Button(action: { showAddSheet = true }) {
-                        Image(systemName: "plus")
-                    }
-                    .buttonStyle(ToyIconButtonStyle(isPrimary: true))
-                    .accessibilityLabel("拍照添加物品")
-                    .transition(.opacity)
-                }
-                Button(action: {
-                    withAnimation {
-                        isEditing.toggle()
-                        selectedItems.removeAll()
-                    }
-                }) {
-                    Image(systemName: isEditing ? "checkmark" : "checklist")
-                }
-                .buttonStyle(ToyIconButtonStyle())
-                .accessibilityLabel(isEditing ? "完成编辑" : "编辑物品")
-            }
-            .padding(.horizontal, AppTheme.Layout.pagePadding)
-            .padding(.vertical, 12)
-            HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
+            homeToolbarView
+            // 占位只决定房间区域高度，触摸继续交给下层的房间画布。
+            Color.clear
                 .frame(height: homeHeaderHeight)
-                // 画布内容随抽屉收起一起裁剪，避免房间穿到物品列表上。
-                .clipped()
+                .allowsHitTesting(false)
                 .overlay(alignment: .bottomTrailing) { homeHeaderButtonGroup }
                 .overlay(alignment: .bottomLeading) {
                     Button { showDecorationSheet = true } label: {
@@ -255,7 +221,13 @@ struct ContentView: View {
                     .padding(.leading, 20).padding(.bottom, 38)
                 }
         }
-        .background(AppTheme.blueInset.ignoresSafeArea(edges: .top))
+        .background {
+            // 同一张可交互画布延伸到标题与状态栏后面，不重复创建房间或它的状态。
+            // 先裁剪画布，再扩展顶部安全区，收起时仍不会穿到下方物品列表。
+            HomeDecorationView(isPreviewMode: true, selectedContainerID: $selectedContainerID)
+                .clipped()
+                .ignoresSafeArea(edges: .top)
+        }
         // 确保 ZIndex 正确，避免被 containerListView 覆盖时出现背景穿透
         .zIndex(0)
         // 全屏装修模式
@@ -265,6 +237,41 @@ struct ContentView: View {
                 HomeDecorationView(isPreviewMode: false, isEditing: true, selectedContainerID: $selectedContainerID)
             }
         }
+    }
+
+    private var homeToolbarView: some View {
+        HStack(spacing: 10) {
+            StorageBuddy().frame(width: 42, height: 42).padding(.trailing, 4)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("我的小天地")
+                    .font(.system(.title2, design: .rounded, weight: .heavy))
+                    .foregroundStyle(AppTheme.text)
+                Text("\(allItems.count) 件物品 · \(containers.count) 个容器")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+            // 用细小的柔和阴影帮助文字从房间纹理中分离，不增加整块底板。
+            .shadow(color: AppTheme.surface.opacity(0.9), radius: 2, y: 1)
+            Spacer(minLength: 4)
+            if !isEditing {
+                Button(action: { showAddSheet = true }) { Image(systemName: "plus") }
+                    .buttonStyle(ToyIconButtonStyle(isPrimary: true))
+                    .accessibilityLabel("拍照添加物品")
+                    .transition(.opacity)
+            }
+            Button(action: {
+                withAnimation {
+                    isEditing.toggle()
+                    selectedItems.removeAll()
+                }
+            }) {
+                Image(systemName: isEditing ? "checkmark" : "checklist")
+            }
+            .buttonStyle(ToyIconButtonStyle())
+            .accessibilityLabel(isEditing ? "完成编辑" : "编辑物品")
+        }
+        .padding(.horizontal, AppTheme.Layout.pagePadding)
+        .padding(.vertical, 12)
     }
 
     private var homeHeaderButtonGroup: some View {
@@ -347,20 +354,18 @@ struct ContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 16) // 增加一点垂直内边距，适应大圆角
         }
-        .background(
-            AppTheme.surface
-                .clipShape(
-                    .rect(
-                        topLeadingRadius: 30,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 30
-                    )
-                )
-                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: -4) // 添加一点向上阴影增强层次感
+        .background(AppTheme.surface)
+        // 背景和滚动内容一起裁剪。只裁背景会让两端 tab 滑出圆角抽屉。
+        .clipShape(
+            .rect(
+                topLeadingRadius: StickerStyle.tabCornerRadius,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: StickerStyle.tabCornerRadius
+            )
         )
-        .scrollClipDisabled()
-        .padding(.top, -24) // 向上偏移覆盖 Header，形成抽屉效果
+        .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: -4)
+        .padding(.top, -StickerStyle.tabOverlap) // 向上覆盖 Header，保持抽屉效果。
     }
     
     // 拆分出单独的视图组件，解决 ViewBuilder 过于复杂的问题
@@ -447,19 +452,6 @@ struct ContentView: View {
         draggingItems.removeAll()
     }
     
-    // 计算动态高度
-    private var dynamicItemHeight: CGFloat {
-        // 根据列数计算高度
-        // 调整高度计算公式，使贴纸整体稍微变小
-        // 2列 -> 160 (原180)
-        // 3列 -> 132 (原150)
-        // 4列 -> 104 (原120)
-        // 5列 -> 76 (原90)
-        // 公式：160 - (列数 - 2) * 28
-        let height = 160.0 - CGFloat(gridColumnCount - 2) * 28.0
-        return max(height, 60.0) // 最小高度 60
-    }
-    
     private var inventoryHeading: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(isEditing ? "已选 \(selectedItems.count) 件" : "物品贴纸")
@@ -476,13 +468,26 @@ struct ContentView: View {
     }
 
     private var itemsGridView: some View {
+        GeometryReader { geometry in
+            // 列宽直接来自纸面的实际宽度，不由短名称或 NavigationLink 的理想尺寸决定。
+            let count = StickerStyle.clampedColumnCount(gridColumnCount)
+            let columnWidth = StickerStyle.columnWidth(
+                containerWidth: geometry.size.width, pagePadding: AppTheme.Layout.pagePadding, count: count
+            )
+            let columns = Array(repeating: GridItem(.fixed(columnWidth), spacing: StickerStyle.columnSpacing), count: count)
+            let itemHeight = StickerStyle.imageHeight(columnWidth: columnWidth)
+            itemsScrollView(columnWidth: columnWidth, columns: columns, itemHeight: itemHeight)
+        }
+    }
+
+    private func itemsScrollView(columnWidth: CGFloat, columns: [GridItem], itemHeight: CGFloat) -> some View {
         ScrollView {
             let filteredItems = currentItems.sorted { $0.createdDate > $1.createdDate }
             
             if filteredItems.isEmpty {
                 emptyStateView
             } else {
-                LazyVGrid(columns: columns, spacing: 12) {
+                LazyVGrid(columns: columns, spacing: StickerStyle.rowSpacing) {
                     ForEach(filteredItems) { item in
                         // 如果在编辑模式，拦截点击事件用于选择
                         // 如果在浏览模式，使用 NavigationLink 进行跳转
@@ -491,7 +496,8 @@ struct ContentView: View {
                                 item: item,
                                 isEditing: isEditing,
                                 isSelected: selectedItems.contains(item),
-                                itemHeight: dynamicItemHeight
+                                itemHeight: itemHeight,
+                                itemWidth: columnWidth
                             )
                             .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
                             .onTapGesture {
@@ -563,9 +569,11 @@ struct ContentView: View {
                                     item: item,
                                     isEditing: isEditing,
                                     isSelected: selectedItems.contains(item),
-                                    itemHeight: dynamicItemHeight
+                                    itemHeight: itemHeight,
+                                    itemWidth: columnWidth
                                 )
                             }
+                            .buttonStyle(.plain)
                             // 关键：缩放时禁用跳转，防止误触
                             .disabled(isScaling)
                             .opacity(draggingItems.contains(item.id.uuidString) ? 0.3 : 1.0) // 幽灵占位效果
@@ -614,10 +622,9 @@ struct ContentView: View {
                             }
                         }
                     }
-                    // 强制在列数变化时重建整个 Cell，解决图片大小不更新的问题
-                    .id(gridColumnCount)
+                    // 明确列宽后，缩放直接更新尺寸，保留已有小图与视图状态。
                 }
-                .padding(20)
+                .padding(AppTheme.Layout.pagePadding)
                 .padding(.bottom, isEditing ? 80 : 0) // 给垃圾桶留位置
                 // 双指缩放手势
                 .simultaneousGesture(
@@ -632,11 +639,10 @@ struct ContentView: View {
                             // 记录精确计算值
                             preciseColumnCount = newCount
                             
-                            let clampedCount = min(max(Int(round(newCount)), 2), 5)
+                            let clampedCount = StickerStyle.clampedColumnCount(Int(round(newCount)))
                             
                             if gridColumnCount != clampedCount {
-                                // 移除 withAnimation，避免与 .id(gridColumnCount) 强制重建产生冲突
-                                // 导致 Invalid sample AnimatablePair 错误
+                                // 缩放过程中立即采用新列宽，避免连续动画互相打断。
                                 gridColumnCount = clampedCount
                             }
                         }
@@ -644,7 +650,8 @@ struct ContentView: View {
                             // 关键修正：直接使用 onChanged 中计算并记录的精确值
                             // 避免 onEnded 中 value 可能存在的误差或不一致问题
                             // 同时限制 baseColumnCount 在合理范围内 (2~5)
-                            baseColumnCount = min(max(preciseColumnCount, 2.0), 5.0)
+                            baseColumnCount = min(max(preciseColumnCount, CGFloat(StickerStyle.minimumColumnCount)),
+                                                  CGFloat(StickerStyle.maximumColumnCount))
                             
                             // 延迟恢复点击，防止松手瞬间误触
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -654,11 +661,10 @@ struct ContentView: View {
                 )
             }
         }
-        .background(
-            ZStack {
-                AppTheme.background
-            }
-        )
+        .background {
+            // 固定在贴纸区的纸面上，滚动和回弹时也不会露出纯白空洞。
+            DotGridBackground().ignoresSafeArea(edges: .bottom)
+        }
         // 拖拽时禁用滚动，防止列表滑动到最底部
         .scrollDisabled(!draggingItems.isEmpty)
         // 关键：通过监听拖拽手势来主动阻止 ScrollView 的滚动事件
@@ -902,7 +908,7 @@ struct ContainerTabItem: View {
                     )
                     .lineLimit(1) // 强制单行
                     .fixedSize() // 强制适应内容大小
-                    .offset(y: -50) // 向上偏移更多，避免遮挡图标
+                    .offset(y: -12) // 提示放在抽屉内边距中，裁剪后仍能看见。
                     .zIndex(999) // 确保在最上层
             }
         }
@@ -936,6 +942,7 @@ struct ItemGridCell: View {
     let isSelected: Bool
     // 接收动态高度
     var itemHeight: CGFloat = 120
+    var itemWidth: CGFloat?
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -950,6 +957,8 @@ struct ItemGridCell: View {
                     .padding(8)
             }
         }
+        .frame(width: itemWidth)
+        .frame(maxWidth: .infinity)
         .scaleEffect(isSelected ? 0.95 : 1.0)
         .animation(.spring, value: isSelected)
     }

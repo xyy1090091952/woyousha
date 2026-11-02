@@ -49,6 +49,16 @@ nonisolated enum IsometricDecoration {
             for row in 0..<3 {
                 for col in 0..<4 { m.front(-4.5+Double(col)*2.3,1.2,2+Double(row)*2,0.9,0.8,PixelPalette.teal) }
             }
+        case .clock: m = IsometricHouseholdDecoration.clock()
+        case .flowers: m = IsometricHouseholdDecoration.flowers(style: style)
+        case .tableLamp: m = IsometricHouseholdDecoration.tableLamp()
+        case .cactus: m = IsometricHouseholdDecoration.cactus()
+        case .cushions: m = IsometricHouseholdDecoration.cushions(style: style)
+        case .teddyBear: m = IsometricHouseholdDecoration.teddyBear()
+        case .floorMirror: m = IsometricHouseholdDecoration.floorMirror()
+        case .aquarium: m = IsometricHouseholdDecoration.aquarium()
+        case .speaker: m = IsometricHouseholdDecoration.speaker()
+        case .petBed: m = IsometricHouseholdDecoration.petBed()
         }
         return m
     }

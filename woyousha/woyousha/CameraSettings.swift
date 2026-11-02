@@ -9,4 +9,14 @@ nonisolated enum CameraSettings {
     static let focusIndicatorDuration: TimeInterval = 1.2
     static let cornerRadius: CGFloat = 32
     static let portraitRotation: CGFloat = 90
+    static let landscapePhotoAspectRatio: CGFloat = 4.0 / 3.0
+    static let portraitPhotoAspectRatio: CGFloat = 3.0 / 4.0
+    static let maximumPreviewWidth: CGFloat = 480
+
+    /// 照片尺寸来自相机格式，转为竖拍/横拍后的宽高比，界面只消费这个结果。
+    static func orientedPhotoAspectRatio(sensorRatio: CGFloat, rotationAngle: CGFloat) -> CGFloat {
+        let ratio = sensorRatio > 0 ? sensorRatio : landscapePhotoAspectRatio
+        let quarterTurns = Int((rotationAngle / portraitRotation).rounded())
+        return quarterTurns.isMultiple(of: 2) ? ratio : 1 / ratio
+    }
 }

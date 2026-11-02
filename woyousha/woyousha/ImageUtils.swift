@@ -37,25 +37,37 @@ nonisolated enum ImageUtils {
         }
     }
 
-    /// 输入必须已经缩图并统一方向。Vision 直接生成裁好的透明主体，
-    /// 避免再自行合成遮罩、整图扫描透明边界和重复创建渲染上下文。
-    static func removeBackground(from image: UIImage, request: VNGenerateForegroundInstanceMaskRequest) throws -> UIImage? {
+    /// 输入已经统一方向。轮廓细化限制在 768px，1024px 主体只进行一次合成。
+    /// 推理与精细边缘分别计时，不能把它们笼统归为一次“抠图”。
+    static func removeBackground(from image: UIImage, request: VNGenerateForegroundInstanceMaskRequest,
+                                 trace: PhotoPerformanceTrace) throws -> UIImage? {
         #if targetEnvironment(simulator)
         return nil // 模拟器保留原图，主体分离在真机验证。
         #else
         guard let cgImage = image.cgImage else { return nil }
-        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
-        try handler.perform([request])
+        let analysisImage = trace.measure(.analysisResize) {
+            resizeImage(image, maxDimension: PhotoProcessingSettings.analysisDimension)
+        }
+        guard let analysisCGImage = analysisImage.cgImage else { return nil }
+        trace.setAnalysisSize(width: analysisCGImage.width, height: analysisCGImage.height)
+        try Task.checkCancellation()
+        let handler = trace.measure(.handlerCreation) {
+            VNImageRequestHandler(cgImage: analysisCGImage, orientation: .up)
+        }
+        try trace.measure(.vision) { try handler.perform([request]) }
         try Task.checkCancellation()
         guard let result = request.results?.first, !result.allInstances.isEmpty else { return nil }
-        let pixels = try result.generateMaskedImage(
-            ofInstances: result.allInstances,
-            from: handler,
-            croppedToInstancesExtent: true
-        )
+        let pixels = try trace.measure(.refinement) {
+            try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
+        }
         try Task.checkCancellation()
-        let output = CIImage(cvPixelBuffer: pixels)
-        guard let cutout = AlphaOutlineRenderer.context.createCGImage(output, from: output.extent) else { return nil }
+        let cutout = trace.measure(.composite) {
+            ForegroundMaskRenderer.cutout(source: cgImage, softMask: pixels,
+                                         instanceMask: result.instanceMask,
+                                         padding: PhotoProcessingSettings.subjectCropPadding)
+        }
+        try Task.checkCancellation()
+        guard let cutout else { return nil }
         return UIImage(cgImage: cutout, scale: 1, orientation: .up)
         #endif
     }
@@ -66,7 +78,8 @@ nonisolated enum ImageUtils {
                 source,
                 radius: thickness,
                 padding: ceil(thickness) + 2,
-                maskMaxDimension: PhotoProcessingSettings.outlineMaskDimension
+                maskMaxDimension: PhotoProcessingSettings.outlineMaskDimension,
+                roundingRadius: PhotoProcessingSettings.borderRoundingRadius
               ) else { return nil }
         return UIImage(cgImage: result, scale: image.scale, orientation: image.imageOrientation)
     }

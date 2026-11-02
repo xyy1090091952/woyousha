@@ -6,8 +6,8 @@ import OSLog
 /// unchecked Sendable 的边界只包住这个队列封装，AVFoundation 对象不传给图片处理任务。
 nonisolated final class CameraSessionDriver: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
     enum Event: Sendable {
-        case ready(hasFlash: Bool, canSwitch: Bool, isFront: Bool)
-        case interrupted(String), failed(String), photo(Data), captureFailed(String)
+        case ready(hasFlash: Bool, canSwitch: Bool, isFront: Bool, sensorAspectRatio: CGFloat)
+        case interrupted(String), failed(String), photo(Data, PhotoCaptureTiming), captureFailed(String)
     }
 
     let session = AVCaptureSession()
@@ -18,6 +18,7 @@ nonisolated final class CameraSessionDriver: NSObject, AVCapturePhotoCaptureDele
     private var wantsRunning = false
     private var generation = UUID()
     private var captureID: Int64?
+    private var captureStartedUptime: TimeInterval?
     private var capturedData: Data?
     private var rotationAngle: CGFloat = CameraSettings.portraitRotation
     private var captureTimeout: DispatchWorkItem?
@@ -126,14 +127,26 @@ nonisolated final class CameraSessionDriver: NSObject, AVCapturePhotoCaptureDele
 
     private func publishReady() {
         let opposite: AVCaptureDevice.Position = input?.device.position == .back ? .front : .back
+        // 当前拍摄设置未覆盖 maxPhotoDimensions，系统使用格式支持的最小照片尺寸。
+        // 读取同一份尺寸来决定取景比例，不把视频预览的宽高比误当作照片比例。
+        let dimensions = input?.device.activeFormat.supportedMaxPhotoDimensions.min {
+            Int64($0.width) * Int64($0.height) < Int64($1.width) * Int64($1.height)
+        }
+        let sensorAspectRatio: CGFloat
+        if let dimensions, dimensions.width > 0, dimensions.height > 0 {
+            sensorAspectRatio = CGFloat(dimensions.width) / CGFloat(dimensions.height)
+        } else {
+            sensorAspectRatio = CameraSettings.landscapePhotoAspectRatio
+        }
         report(.ready(
             hasFlash: input?.device.hasFlash == true,
             canSwitch: AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: opposite) != nil,
-            isFront: input?.device.position == .front
+            isFront: input?.device.position == .front,
+            sensorAspectRatio: sensorAspectRatio
         ))
     }
 
-    func capture(flash: Bool, generation: UUID) {
+    func capture(flash: Bool, generation: UUID, startedUptime: TimeInterval) {
         queue.async { [self] in
             guard self.generation == generation else { return }
             guard self.wantsRunning,
@@ -163,6 +176,7 @@ nonisolated final class CameraSessionDriver: NSObject, AVCapturePhotoCaptureDele
                 }
             }
             self.captureID = settings.uniqueID
+            self.captureStartedUptime = startedUptime
             self.capturedData = nil
             self.photoOutput.capturePhoto(with: settings, delegate: self)
             self.logger.info("Custom shutter requested photo")
@@ -189,13 +203,22 @@ nonisolated final class CameraSessionDriver: NSObject, AVCapturePhotoCaptureDele
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
         let id = resolvedSettings.uniqueID
         let succeeded = error == nil
+        // 只把数值带进队列，不跨线程捕获 AVFoundation 的可变设置对象。
+        let width = Int(resolvedSettings.photoDimensions.width)
+        let height = Int(resolvedSettings.photoDimensions.height)
         queue.async {
             guard self.captureID == id else { return }
             let data = self.capturedData
+            let started = self.captureStartedUptime ?? PhotoPerformanceTrace.now
+            let timing = PhotoCaptureTiming(
+                startedUptime: started,
+                milliseconds: (PhotoPerformanceTrace.now - started) * 1000,
+                width: width, height: height
+            )
             self.clearCapture()
             guard self.wantsRunning else { return }
             if succeeded, let data {
-                self.report(.photo(data))
+                self.report(.photo(data, timing))
                 self.logger.info("Photo data delivered to editor")
             } else {
                 self.report(.captureFailed("照片没有生成成功，请再拍一次。"))
@@ -245,6 +268,7 @@ nonisolated final class CameraSessionDriver: NSObject, AVCapturePhotoCaptureDele
         captureTimeout?.cancel()
         captureTimeout = nil
         captureID = nil
+        captureStartedUptime = nil
         capturedData = nil
     }
 

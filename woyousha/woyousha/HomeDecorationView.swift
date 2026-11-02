@@ -31,6 +31,7 @@ struct HomeDecorationView: View {
     @State private var decorationDragOffset: CGSize = .zero
     @State private var decorationScalePreview: Double?
     @State private var drawerCategory = DrawerCategory.furniture
+    @State private var showsFurnitureCatalog = false
 
     private enum DrawerCategory: String, CaseIterable {
         case furniture = "家具"
@@ -128,6 +129,10 @@ struct HomeDecorationView: View {
             if id != nil { selectedContainerID = nil }
         }
         .onReceive(NotificationCenter.default.publisher(for: .resetHomeView)) { _ in resetViewport() }
+        .sheet(isPresented: $showsFurnitureCatalog) {
+            FurnitureCatalogPicker(title: "添加家具", dismissOnSelection: true, onSelect: addFurniture)
+                .presentationDetents([.medium, .large])
+        }
         .alert("布置没有保存", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -249,48 +254,9 @@ struct HomeDecorationView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     if drawerCategory == .decorations {
-                        ForEach(RoomDecoration.Kind.allCases,id:\.self) { kind in
-                            Button {
-                                do {
-                                    selectedContainerID=nil
-                                    selectedDecorationID=try decorationStore.add(kind:kind)
-                                } catch { errorMessage="装饰物没有添加成功，请重试。" }
-                            } label: {
-                                VStack(spacing:6) {
-                                    PixelDecorationView(kind:kind,roomStyle:currentRoomImage).frame(width:68,height:70)
-                                    Label(kind.title,systemImage:"plus").font(.caption.weight(.bold))
-                                }.frame(width:84).padding(8)
-                                    .background(AppTheme.inset,in:RoundedRectangle(cornerRadius:18))
-                            }.buttonStyle(.plain)
-                        }
-                        ForEach(decorationStore.decorations.filter { !$0.isPlaced }) { decoration in
-                            Button { _=performDecoration(.place,id:decoration.id) } label: {
-                                VStack(spacing:6) {
-                                    PixelDecorationView(kind:decoration.kind,roomStyle:currentRoomImage).frame(width:68,height:70)
-                                    Text("放回\(decoration.name)").font(.caption.weight(.bold))
-                                }.frame(width:84).padding(8)
-                                    .background(AppTheme.blueInset,in:RoundedRectangle(cornerRadius:18))
-                            }.buttonStyle(.plain)
-                        }
+                        decorationTiles
                     } else {
-                    let unplaced = containers.filter { !$0.isPlaced }
-                    if unplaced.isEmpty {
-                        Text("家具都已摆好，轻点房间里的家具即可调整。")
-                            .font(.subheadline).foregroundStyle(AppTheme.secondaryText).padding(.vertical, 24)
-                    }
-                    ForEach(unplaced) { container in
-                        Button { perform(.place(RoomConfig.initialFurniturePosition), on: container) } label: {
-                            VStack(spacing: 6) {
-                                PixelFurnitureView(styleID: FurnitureConfig.styleID(name: container.name, icon: container.icon, savedID: container.furnitureImageName))
-                                    .frame(width: 68, height: 70)
-                                Text(container.name).font(.caption.weight(.bold)).lineLimit(1)
-                            }
-                            .frame(width: 84)
-                            .padding(8)
-                            .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 18))
-                        }
-                        .buttonStyle(.plain)
-                    }
+                        furnitureTiles
                     }
                 }
             }
@@ -299,6 +265,78 @@ struct HomeDecorationView: View {
         .foregroundStyle(AppTheme.text)
         .background(AppTheme.surface)
         .overlay(alignment: .top) { Rectangle().fill(AppTheme.line).frame(height: 2) }
+    }
+
+    @ViewBuilder
+    private var furnitureTiles: some View {
+        Button { showsFurnitureCatalog = true } label: {
+            VStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 26, weight: .bold))
+                    .frame(width: 68, height: 70)
+                Text("添加家具").font(.caption.weight(.bold))
+            }
+            .frame(width: 84)
+            .padding(8)
+            .foregroundStyle(AppTheme.accentText)
+            .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        let unplaced = containers.filter { !$0.isPlaced }
+        if unplaced.isEmpty {
+            Text("添加新家具，或轻点房间里的家具调整。")
+                .font(.subheadline).foregroundStyle(AppTheme.secondaryText).padding(.vertical, 24)
+        }
+        ForEach(unplaced) { container in
+            Button { perform(.place(RoomConfig.initialFurniturePosition), on: container) } label: {
+                VStack(spacing: 6) {
+                    PixelFurnitureView(styleID: FurnitureConfig.styleID(name: container.name, icon: container.icon, savedID: container.furnitureImageName))
+                        .frame(width: 68, height: 70)
+                    Text(container.name).font(.caption.weight(.bold)).lineLimit(1)
+                }
+                .frame(width: 84)
+                .padding(8)
+                .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var decorationTiles: some View {
+        ForEach(RoomDecoration.Kind.allCases, id: \.self) { kind in
+            Button {
+                do {
+                    let addedID = try decorationStore.add(kind: kind, furnitureLayers: containers.filter(\.isPlaced).map(\.zIndex))
+                    selectedContainerID = nil
+                    selectedDecorationID = addedID
+                } catch { errorMessage = "装饰物没有添加成功，请重试。" }
+            } label: {
+                VStack(spacing: 6) {
+                    PixelDecorationView(kind: kind, roomStyle: currentRoomImage).frame(width: 68, height: 70)
+                    Label(kind.title, systemImage: "plus").font(.caption.weight(.bold))
+                }
+                .frame(width: 84)
+                .padding(8)
+                .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func addFurniture(styleID: String) -> Bool {
+        do {
+            let added = try FurniturePlacementRepository.add(
+                styleID: styleID, among: containers,
+                decorationLayers: decorationStore.decorations.filter { !$0.kind.isFloorCovering }.map(\.zIndex),
+                in: modelContext
+            )
+            selectedDecorationID = nil
+            selectedContainerID = added.id.uuidString
+            return true
+        } catch {
+            // 目录抽屉显示保存失败提示，并保留当前位置供用户重试。
+            return false
+        }
     }
 
     @discardableResult
@@ -322,6 +360,11 @@ struct HomeDecorationView: View {
             try decorationStore.perform(action,id:id,furnitureLayers:containers.filter(\.isPlaced).map(\.zIndex))
             let decoration=decorationStore.decorations.first { $0.id==id }
             selectedDecorationID=decoration?.isPlaced == true ? id:nil
+            if decoration == nil {
+                decorationScalePreview = nil
+                draggingDecorationID = nil
+                decorationDragOffset = .zero
+            }
             if selectedDecorationID != nil { selectedContainerID=nil }
             return true
         } catch {

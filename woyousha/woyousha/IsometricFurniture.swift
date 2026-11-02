@@ -7,6 +7,7 @@ nonisolated enum IsometricFurniture {
     static let dark = PixelPalette.ink
 
     static func model(_ id: String) -> IsoMesh {
+        if let household = IsometricHouseholdFurniture.model(id) { return household }
         var m=IsoMesh()
         switch id {
         case "bingxiang", "bingxiang2": fridge(&m, mint: id=="bingxiang2")

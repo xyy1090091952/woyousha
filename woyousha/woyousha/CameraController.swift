@@ -1,6 +1,7 @@
 import AVFoundation
 import Observation
 import UIKit
+import OSLog
 
 /// 页面唯一的相机状态来源。每次启停带版本号，退出后的旧回调不会覆盖新页面。
 @MainActor @Observable
@@ -12,12 +13,14 @@ final class CameraController {
     struct Photo {
         let id = UUID()
         let data: Data
+        let timing: PhotoCaptureTiming
     }
     private(set) var state: State = .paused
     private(set) var isCapturing = false
     private(set) var hasFlash = false
     private(set) var canSwitchCamera = false
     private(set) var isFrontCamera = false
+    private(set) var photoAspectRatio = CameraSettings.portraitPhotoAspectRatio
     private(set) var photo: Photo?
     var usesFlash = false
     var captureError: String?
@@ -28,15 +31,19 @@ final class CameraController {
     @ObservationIgnored private var startupWatchdog: Task<Void, Never>?
     @ObservationIgnored private weak var previewLayer: AVCaptureVideoPreviewLayer?
     @ObservationIgnored private var rotationAngle: CGFloat = CameraSettings.portraitRotation
+    @ObservationIgnored private var sensorAspectRatio = CameraSettings.landscapePhotoAspectRatio
+    @ObservationIgnored private let logger = Logger(subsystem: "com.OGS.woyousha", category: "CameraPreview")
     @ObservationIgnored private lazy var driver = CameraSessionDriver { [weak self] event, generation in
         Task { @MainActor [weak self] in
             guard let self, self.isActive, self.generation == generation else { return }
             switch event {
-            case .ready(let hasFlash, let canSwitch, let isFront):
+            case .ready(let hasFlash, let canSwitch, let isFront, let sensorAspectRatio):
                 self.startupWatchdog?.cancel()
                 self.hasFlash = hasFlash
                 self.canSwitchCamera = canSwitch
                 self.isFrontCamera = isFront
+                self.sensorAspectRatio = sensorAspectRatio
+                self.updatePhotoAspectRatio()
                 if !hasFlash { self.usesFlash = false }
                 self.state = .ready
             case .interrupted(let message):
@@ -47,10 +54,10 @@ final class CameraController {
                 self.startupWatchdog?.cancel()
                 self.state = .failed(message)
                 self.isCapturing = false
-            case .photo(let data):
+            case .photo(let data, let timing):
                 self.isCapturing = false
                 // 不在主线程展开大照片，交给录入流水线做缩略解码。
-                self.photo = Photo(data: data)
+                self.photo = Photo(data: data, timing: timing)
             case .captureFailed(let message):
                 self.isCapturing = false
                 self.captureError = message
@@ -88,13 +95,17 @@ final class CameraController {
 
     func attach(to layer: AVCaptureVideoPreviewLayer) {
         previewLayer = layer
-        layer.videoGravity = .resizeAspectFill
+        // 完整显示相机画面，窗口比例由照片格式决定，不再为了铺满窗口裁掉上下边。
+        layer.videoGravity = .resizeAspect
         layer.session = driver.session
     }
 
     func detach(from layer: AVCaptureVideoPreviewLayer) {
+        let started = PhotoPerformanceTrace.now
+        logger.info("Preview detach began")
         if previewLayer === layer { previewLayer = nil }
         layer.session = nil
+        logger.info("Preview detach ended: \(Int((PhotoPerformanceTrace.now - started) * 1000)) ms")
     }
 
     func setActive(_ active: Bool) {
@@ -151,14 +162,15 @@ final class CameraController {
             } else if canUseShutter { retry() }
             return
         }
+        let startedUptime = PhotoPerformanceTrace.now
         isCapturing = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        driver.capture(flash: usesFlash, generation: generation)
+        driver.capture(flash: usesFlash, generation: generation, startedUptime: startedUptime)
     }
 
-    func consumePhoto() -> Data? {
+    func consumePhoto() -> Photo? {
         defer { photo = nil }
-        return photo?.data
+        return photo
     }
 
     func switchCamera() {
@@ -176,5 +188,14 @@ final class CameraController {
         guard rotationAngle != angle else { return }
         rotationAngle = angle
         driver.rotate(to: angle)
+        // rotate 可能由 UIView.layoutSubviews 触发，下一轮再更新可观察状态，避免布局中写状态。
+        Task { @MainActor [weak self] in self?.updatePhotoAspectRatio() }
+    }
+
+    private func updatePhotoAspectRatio() {
+        let ratio = CameraSettings.orientedPhotoAspectRatio(
+            sensorRatio: sensorAspectRatio, rotationAngle: rotationAngle
+        )
+        if photoAspectRatio != ratio { photoAspectRatio = ratio }
     }
 }
