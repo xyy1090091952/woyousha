@@ -52,6 +52,7 @@ enum FurniturePlacementRepository {
         case .style(let id):
             guard let config = FurnitureConfig.get(byImageName: id) else { return }
             target.furnitureImageName = id
+            target.icon = config.icon
             target.gridWidth = config.width
             target.gridDepth = config.depth
         case .mirror:

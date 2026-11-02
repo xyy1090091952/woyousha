@@ -8,20 +8,26 @@
 import Foundation
 
 // 家具配置结构体
-struct FurnitureConfig: Identifiable {
+nonisolated struct FurnitureConfig: Identifiable {
+    static let defaultIcon = "archivebox"
+
     var id: String { imageName }
     let name: String
     let icon: String // SF Symbol
     let imageName: String // 兼容旧数据的造型 ID；目前由 PixelArtRenderer 生成，不再读取 Assets
     let width: Int // 占地宽度 (网格数)
     let depth: Int // 占地深度 (网格数)
+    let category: FurnitureCategory
+    let searchKeywords: [String]
+    let isNew: Bool
     
     // 新增视觉调整参数
     var scale: CGFloat = 1.0 // 默认缩放比例
     var offsetY: CGFloat = 0.0 // 默认垂直偏移
     
     // 初始化方法
-    init(name: String, icon: String, imageName: String, width: Int, depth: Int, scale: CGFloat = 1.0, offsetY: CGFloat = 0.0) {
+    init(name: String, icon: String, imageName: String, width: Int, depth: Int, scale: CGFloat = 1.0, offsetY: CGFloat = 0.0,
+         category: FurnitureCategory? = nil, searchKeywords: [String] = [], isNew: Bool = false) {
         self.name = name
         self.icon = icon
         self.imageName = imageName
@@ -29,6 +35,24 @@ struct FurnitureConfig: Identifiable {
         self.depth = depth
         self.scale = scale
         self.offsetY = offsetY
+        self.category = category ?? Self.legacyCategory(for: imageName)
+        self.searchKeywords = searchKeywords
+        self.isNew = isNew
+    }
+
+    /// 老目录保留原初始化参数与编号，在此补齐分类；新目录逐项显式指定分类。
+    private static func legacyCategory(for id: String) -> FurnitureCategory {
+        switch id {
+        case "yigui", "double-bed", "nightstand", "dressing-table": return .bedroom
+        case "shafa", "shafayi", "dianshigui", "dianshigui2", "coffee-table", "chuanghu", "wall-panel": return .livingRoom
+        case "bijia", "shujia", "study-desk": return .study
+        case "bingxiang", "bingxiang2", "fanzhuo", "chuwei", "dining-chair", "oven-stove": return .kitchen
+        case "mirror", "washing-machine": return .bathroom
+        case "xichengqi", "dianshi", "air-conditioner": return .appliances
+        case "mucai": return .outdoor
+        case "beikedeng", "floor-lamp": return .lighting
+        default: return .storage
+        }
     }
     
     // 预设家具列表
@@ -71,16 +95,26 @@ struct FurnitureConfig: Identifiable {
         FurnitureConfig(name: "烤箱灶台", icon: "oven", imageName: "oven-stove", width: 1, depth: 1),
         FurnitureConfig(name: "空调", icon: "air.conditioner.horizontal", imageName: "air-conditioner", width: 2, depth: 1),
         FurnitureConfig(name: "行李箱", icon: "suitcase.rolling", imageName: "suitcase", width: 1, depth: 1)
-    ]
+    ] + FurnitureExpansionCatalog.all
+
+    private static let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+    private static let longestNamesFirst = all.sorted { $0.name.count > $1.name.count }
     
     // 根据名称获取配置
     static func get(byImageName imageName: String) -> FurnitureConfig? {
-        return all.first { $0.imageName == imageName }
+        return byID[imageName]
     }
 
     /// 用户明确选择的造型优先；自动造型按名称与图标匹配，失效编号退回自动选择。
     static func styleID(name: String, icon: String, savedID: String?) -> String {
         if let savedID, get(byImageName: savedID) != nil { return savedID }
+        // 新目录的完整名称优先，避免“推拉门衣柜”等新家具被旧同义词抢先匹配。
+        if let exact = all.first(where: { $0.name == name.trimmingCharacters(in: .whitespacesAndNewlines) }) {
+            return exact.id
+        }
+        if let match = longestNamesFirst.first(where: { name.contains($0.name) }) {
+            return match.imageName
+        }
         let aliases = [
             ("镜柜","mirror"),("镜子","mirror"),("厨房柜","chuwei"),("墙壁","wall-panel"),
             ("书包","beibao"),("小推车","cart"),("推车","cart"),("床头柜","nightstand"),
@@ -88,9 +122,6 @@ struct FurnitureConfig: Identifiable {
             ("洗衣","washing-machine"),("烤箱","oven-stove"),("灶台","oven-stove"),("旅行箱","suitcase")
         ]
         if let alias = aliases.first(where: { name.contains($0.0) }) { return alias.1 }
-        if let match = all.sorted(by: { $0.name.count > $1.name.count }).first(where: { name.contains($0.name) }) {
-            return match.imageName
-        }
         if icon.contains("refrigerator") { return "bingxiang" }
         if icon.contains("washer") { return "washing-machine" }
         if icon.contains("oven") { return "oven-stove" }
