@@ -50,10 +50,10 @@ nonisolated enum IsoCatalogParts {
         let first = ring(a), last = ring(b)
         for i in 0..<8 {
             let j = (i+1)%8
-            m.face([first[i],first[j],last[j],last[i]], IsoColor.shade(color, 0.83+Double(i%4)*0.08))
+            m.face([first[i],first[j],last[j],last[i]],color)
         }
-        m.face(last, IsoColor.shade(color, 1.15))
-        m.face(first, IsoColor.shade(color, 0.8))
+        m.face(last,color)
+        m.face(first,color)
     }
 
     /// 椭球用于豆袋、地球仪、宠物玩具与水壶等曲面主体。
@@ -67,9 +67,8 @@ nonisolated enum IsoCatalogParts {
         }
         for row in 0..<levels {
             for col in 0..<segments {
-                let light = 0.86+0.10*sin(Double(col) * .pi*2/Double(segments))+Double(row)*0.025
                 m.face([point(row,col),point(row,col+1),point(row+1,col+1),point(row+1,col)],
-                       IsoColor.shade(color, light))
+                       color)
             }
         }
     }

@@ -5,15 +5,25 @@ nonisolated enum IsometricRoom {
     static let sideLength = 128.0
     static let wallHeight = 70.0
 
+    /// 建筑投影只包含墙体，不能把整张地板当成遮挡物再次压暗。
+    static func shadowCasters() -> IsoMesh {
+        var mesh = IsoMesh()
+        mesh.box(-4,-4,0,4,132,wallHeight,PixelPalette.cream)
+        mesh.box(-4,-4,0,132,4,wallHeight,PixelPalette.cream)
+        return mesh
+    }
+
     static func model(style: String) -> IsoMesh {
         let green = style == "home2"
-        let wall: UInt32 = green ? 0x4F9C8A : 0xE5BE87
-        let trim: UInt32 = green ? 0x285D57 : 0x95603D
-        let wood: UInt32 = green ? 0xAB8150 : 0xC58B4F
+        let wall: UInt32 = green ? 0xA7B8A0 : 0xE8DFC8
+        let trim: UInt32 = green ? 0x5D7766 : 0xA58461
+        let wood: UInt32 = green ? 0xB6986E : 0xBE996D
         var m = IsoMesh()
-        m.box(-4,-4,-7,136,136,7,trim)
-        m.box(-4,-4,0,4,132,wallHeight,wall)
-        m.box(-4,-4,0,132,4,wallHeight,wall)
+        m.box(-4,-4,-7,136,136,7,trim,material:.wood)
+        // 底座最下方以完整/透明像素消融到背景，家具的边缘不参与消融。
+        for i in m.faces.indices { m.faces[i].dissolvesBelow = -7+IsoPixelStyle.baseDissolveHeight }
+        m.box(-4,-4,0,4,132,wallHeight,wall,material:.plaster)
+        m.box(-4,-4,0,132,4,wallHeight,wall,material:.plaster)
         m.box(-4,-4,wallHeight,4,132,1.2,IsoColor.shade(wall,1.1))
         m.box(-4,-4,wallHeight,132,4,1.2,IsoColor.shade(wall,1.1))
         for row in 0..<16 {
@@ -23,17 +33,13 @@ nonisolated enum IsometricRoom {
                 let start = max(0,Double(col*32+shift)), end = min(128,Double((col+1)*32+shift))
                 guard end > start else { continue }
                 let tint = IsoColor.shade(wood,0.95+Double((row*7+col+9)%5)*0.026)
-                m.top(start,y,0.06,end-start,7.8,tint)
-                m.top(start+0.4,y+7.2,0.10,max(0.1,end-start-0.8),0.5,IsoColor.shade(wood,0.77))
+                m.top(start,y,0.06,end-start,7.8,tint,material:.wood)
+                m.top(start+0.4,y+7.5,0.10,max(0.1,end-start-0.8),0.24,IsoColor.shade(wood,0.84),material:.wood)
                 for grain in 0..<2 {
                     let x = start+2+Double(grain)*6
                     if x+7 < end { m.top(x,y+2+Double(grain)*2,0.13,7,0.28,IsoColor.shade(tint,0.88)) }
                 }
             }
-        }
-        for t in stride(from:8.0,to:128,by:8) {
-            m.side(0.06,t,5,0.6,64,IsoColor.shade(wall,0.69))
-            m.front(t,0.06,5,0.6,64,IsoColor.shade(wall,0.90))
         }
         m.box(0,0,0,1.2,128,5,trim)
         m.box(0,0,0,128,1.2,5,trim)

@@ -22,7 +22,7 @@ nonisolated enum PixelArtRenderer {
         "chuanghu", "mirror", "wall-panel", "air-conditioner", "floating-cabinet", "wall-bookcase"
     ]
 
-    /// 单件家具/装饰的小画布：模型包围盒四周留出 spritePadding，主体图与影子图共用。
+    /// 主体画布尺寸沿用已有规则；长投影使用独立画布，不影响点击范围和保存位置。
     private struct SpriteCanvas {
         let width: Int
         let height: Int
@@ -41,9 +41,6 @@ nonisolated enum PixelArtRenderer {
             IsoRasterizer.render(model,width:width,height:height,projection:projection)
         }
 
-        func shadow(_ model: IsoMesh) -> CGImage? {
-            IsoRasterizer.groundShadow(model,width:width,height:height,projection:projection)
-        }
     }
 
     private static func furnitureModel(id: String, mirrored: Bool) -> IsoMesh {
@@ -61,15 +58,15 @@ nonisolated enum PixelArtRenderer {
         return SpriteCanvas(model).render(model)
     }
 
-    /// 与 furniture(id:mirrored:) 同尺寸的透明影子图；挂墙家具返回 nil。
-    static func furnitureShadow(id: String, mirrored: Bool = false) -> CGImage? {
+    /// 独立的方向投影，挂墙家具返回 nil。
+    static func furnitureShadow(id: String, mirrored: Bool = false) -> PixelArtShadow? {
         guard !wallMountedFurniture.contains(id) else { return nil }
         let model=furnitureModel(id:id,mirrored:mirrored)
-        return SpriteCanvas(model).shadow(model)
+        return IsoShadowRenderer.render(model,scale:furniturePixelScale)
     }
 
-    static func furnitureBounds(id: String) -> CGRect {
-        bounds(of:IsometricFurniture.model(id))
+    static func furnitureBounds(id: String, mirrored: Bool = false) -> CGRect {
+        bounds(of:furnitureModel(id:id,mirrored:mirrored))
     }
 
     static func decoration(kind: RoomDecoration.Kind, style: String, mirrored: Bool = false) -> CGImage? {
@@ -78,10 +75,10 @@ nonisolated enum PixelArtRenderer {
     }
 
     /// 墙面装饰和平铺地毯没有落地的体积，不投影子。
-    static func decorationShadow(kind: RoomDecoration.Kind, style: String, mirrored: Bool = false) -> CGImage? {
+    static func decorationShadow(kind: RoomDecoration.Kind, style: String, mirrored: Bool = false) -> PixelArtShadow? {
         guard !kind.isWallMounted, !kind.isFloorCovering else { return nil }
         let model = decorationModel(kind:kind,style:style,mirrored:mirrored)
-        return SpriteCanvas(model).shadow(model)
+        return IsoShadowRenderer.render(model,scale:furniturePixelScale)
     }
 
     static func decorationBounds(kind: RoomDecoration.Kind, mirrored: Bool = false) -> CGRect {
@@ -98,8 +95,37 @@ nonisolated enum PixelArtRenderer {
         }
     }
 
+    /// 包含透明留边的图片范围；影子按这个范围对齐，取整余量也计入。
+    static func spriteBounds(contentBounds: CGRect) -> CGRect {
+        CGRect(x:contentBounds.minX-spritePadding,y:contentBounds.minY-spritePadding,
+               width:ceil(contentBounds.width+spritePadding*2),height:ceil(contentBounds.height+spritePadding*2))
+    }
+
     static func room(style: String) -> CGImage? {
-        IsoRasterizer.render(IsometricRoom.model(style:style),width:roomWidth,height:roomHeight,projection:roomProjection)
+        guard let source=IsoRasterizer.render(IsometricRoom.model(style:style),width:roomWidth,height:roomHeight,projection:roomProjection),
+              let shadow=IsoShadowRenderer.render(IsometricRoom.shadowCasters(),scale:roomPixelScale,groundPlane:0),
+              let sourceData=source.dataProvider?.data,let shadowData=shadow.image.dataProvider?.data else { return nil }
+        var pixels = [UInt8](sourceData as Data)
+        let shadowPixels = [UInt8](shadowData as Data)
+        for y in 0..<roomHeight {
+            for x in 0..<roomWidth {
+                // 只覆盖地板上的像素，墙面、底座和透明背景不接收建筑投影。
+                let difference = (Double(x)+0.5-roomProjection.origin.x)/roomPixelScale
+                let sum = 2*(Double(y)+0.5-roomProjection.origin.y)/roomPixelScale
+                let wx = (sum+difference)/2,wy = (sum-difference)/2
+                guard wx>=0,wy>=0,wx<=IsometricRoom.sideLength,wy<=IsometricRoom.sideLength else { continue }
+                let sx=Int(floor(Double(x)-roomProjection.origin.x-shadow.bounds.minX))
+                let sy=Int(floor(Double(y)-roomProjection.origin.y-shadow.bounds.minY))
+                guard sx>=0,sy>=0,sx<shadow.image.width,sy<shadow.image.height else { continue }
+                let a=(sy*shadow.image.width+sx)*4,b=(y*roomWidth+x)*4
+                let alpha=Double(shadowPixels[a+3])/255
+                guard alpha>0,pixels[b+3]==255 else { continue }
+                for channel in 0..<3 {
+                    pixels[b+channel]=UInt8(min(255,(Double(pixels[b+channel])*(1-alpha)+Double(shadowPixels[a+channel])).rounded()))
+                }
+            }
+        }
+        return IsoRasterizer.image(pixels,width:roomWidth,height:roomHeight)
     }
 
     static func furnishedExample(style: String) -> CGImage? {

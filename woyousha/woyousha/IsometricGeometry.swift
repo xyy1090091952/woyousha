@@ -32,28 +32,49 @@ nonisolated enum IsoColor {
 }
 
 nonisolated struct IsoFace {
-    let points: [IsoPoint]
+    var points: [IsoPoint]
     let color: UInt32
     let outline: UInt32?
+    var material: IsoMaterial = .automatic
+    /// 仅用于场景底座消融；家具主体始终保持完整轮廓。
+    var dissolvesBelow: Double? = nil
+
+    var normal: IsoPoint {
+        guard points.count >= 3 else { return .init(0, 0, 1) }
+        let a = points[0]
+        for i in 1..<(points.count - 1) {
+            let b = points[i], c = points[i + 1]
+            let ux = b.x-a.x, uy = b.y-a.y, uz = b.z-a.z
+            let vx = c.x-a.x, vy = c.y-a.y, vz = c.z-a.z
+            let nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx
+            let length = sqrt(nx*nx+ny*ny+nz*nz)
+            guard length > 0.00001 else { continue }
+            // 各旧模型的顶点绕行方向不同，统一朝向观察者后再计算受光。
+            let sign = nx+ny+nz < 0 ? -1.0 : 1.0
+            return .init(nx/length*sign, ny/length*sign, nz/length*sign)
+        }
+        return .init(0, 0, 1)
+    }
 }
 
 nonisolated struct IsoMesh {
     var faces: [IsoFace] = []
 
-    mutating func face(_ points: [IsoPoint], _ color: UInt32, outline: UInt32? = nil) {
-        faces.append(IsoFace(points: points, color: color, outline: outline))
+    mutating func face(_ points: [IsoPoint], _ color: UInt32, outline: UInt32? = nil,
+                       material: IsoMaterial = .automatic) {
+        faces.append(IsoFace(points: points, color: color, outline: outline, material: material))
     }
 
     /// 三个可见面使用统一光照。每一条边都由真实长宽高投影，不再画“正面矩形”。
     mutating func box(_ x: Double, _ y: Double, _ z: Double, _ w: Double, _ d: Double, _ h: Double,
-                      _ color: UInt32, outlined: Bool = true) {
+                      _ color: UInt32, outlined: Bool = true, material: IsoMaterial = .automatic) {
         let edge = outlined ? IsoColor.shade(color, 0.53) : nil
         face([.init(x,y+d,z),.init(x+w,y+d,z),.init(x+w,y+d,z+h),.init(x,y+d,z+h)],
-             IsoColor.shade(color,0.94),outline:edge)
+             color,outline:edge,material:material)
         face([.init(x+w,y,z),.init(x+w,y+d,z),.init(x+w,y+d,z+h),.init(x+w,y,z+h)],
-             IsoColor.shade(color,0.73),outline:edge)
+             color,outline:edge,material:material)
         face([.init(x,y,z+h),.init(x+w,y,z+h),.init(x+w,y+d,z+h),.init(x,y+d,z+h)],
-             IsoColor.shade(color,1.15),outline:edge)
+             color,outline:edge,material:material)
     }
 
     // 面上细节同样用世界坐标：门缝、书脊、玻璃高光不会偏离家具方向。
@@ -63,8 +84,9 @@ nonisolated struct IsoMesh {
     mutating func side(_ x: Double, _ y: Double, _ z: Double, _ d: Double, _ h: Double, _ color: UInt32) {
         face([.init(x,y,z),.init(x,y+d,z),.init(x,y+d,z+h),.init(x,y,z+h)],color)
     }
-    mutating func top(_ x: Double, _ y: Double, _ z: Double, _ w: Double, _ d: Double, _ color: UInt32) {
-        face([.init(x,y,z),.init(x+w,y,z),.init(x+w,y+d,z),.init(x,y+d,z)],color)
+    mutating func top(_ x: Double, _ y: Double, _ z: Double, _ w: Double, _ d: Double, _ color: UInt32,
+                      material: IsoMaterial = .automatic) {
+        face([.init(x,y,z),.init(x+w,y,z),.init(x+w,y+d,z),.init(x,y+d,z)],color,material:material)
     }
 
     /// 像素风软体边缘：倒角立方体用于坐垫、包体，不用普通方块冒充所有家具。
@@ -84,12 +106,11 @@ nonisolated struct IsoMesh {
         for level in 0..<3 {
             for i in 0..<8 {
                 let j = (i+1)%8
-                let shade = [0.82,0.78,0.73,0.82,0.94,0.95,0.86,0.82][i] * (level==2 ? 1.1:1)
                 face([rings[level][i],rings[level][j],rings[level+1][j],rings[level+1][i]],
-                     IsoColor.shade(color,shade))
+                     color)
             }
         }
-        face(rings[3],IsoColor.shade(color,1.15),outline:IsoColor.shade(color,0.7))
+        face(rings[3],color,outline:IsoColor.shade(color,0.7))
     }
 
     /// 圆润的玩具家具：横向圆角和上下软边分开控制，最终仍输出清晰像素边缘。
@@ -119,13 +140,10 @@ nonisolated struct IsoMesh {
             for i in rings[level].indices {
                 let j = (i+1)%rings[level].count
                 let a = rings[level][i], b = rings[level][j]
-                let dx = b.x-a.x, dy = b.y-a.y
-                let length = max(0.001,hypot(dx,dy))
-                let lighting = 0.88-0.10*dy/length+0.13*dx/length+(level>4 ? 0.08:0)
-                face([a,b,rings[level+1][j],rings[level+1][i]],IsoColor.shade(color,lighting))
+                face([a,b,rings[level+1][j],rings[level+1][i]],color)
             }
         }
-        face(rings.last!,IsoColor.shade(color,1.15))
+        face(rings.last!,color)
     }
 
     /// 多边形圆台：杯子、垃圾桶、灯座和植物叶片共用，所有曲线最后仍栅格化为像素。
@@ -140,11 +158,9 @@ nonisolated struct IsoMesh {
         }
         for i in 0..<sides {
             let j = (i+1)%sides
-            let a = (Double(i)+0.5)*2 * .pi / Double(sides)
-            let light = 0.86 + 0.16*sin(a)-0.12*cos(a)
-            face([bottom[i],bottom[j],top[j],top[i]],IsoColor.shade(color,light))
+            face([bottom[i],bottom[j],top[j],top[i]],color)
         }
-        face(top,IsoColor.shade(color,1.16),outline:IsoColor.shade(color,0.6))
+        face(top,color,outline:IsoColor.shade(color,0.6))
     }
 
     /// 沿 y 轴挤出的轮廓，用于贝壳灯、软靠背等有明确剪影的造型。
@@ -154,57 +170,70 @@ nonisolated struct IsoMesh {
         face(front,color,outline:IsoColor.shade(color,0.6))
         for i in points.indices {
             let j = (i+1)%points.count
-            face([back[i],back[j],front[j],front[i]],IsoColor.shade(color,0.81))
+            face([back[i],back[j],front[j],front[i]],color)
         }
     }
     mutating func merge(_ other: IsoMesh, at position: IsoPoint = .init(0,0,0)) {
-        for face in other.faces {
-            faces.append(IsoFace(points: face.points.map { $0.offset(position) }, color: face.color, outline: face.outline))
+        for var face in other.faces {
+            face.points = face.points.map { $0.offset(position) }
+            if let fade = face.dissolvesBelow { face.dissolvesBelow = fade + position.z }
+            faces.append(face)
         }
     }
 
     func exchangingAxes() -> IsoMesh {
         IsoMesh(faces: faces.map {
-            let face = $0
-            // 镜像交换两条地面轴后，受光面也要交换；不能直接水平翻转整张图片。
-            let liesOnX = face.points.allSatisfy { abs($0.x-face.points[0].x)<0.00001 }
-            let liesOnY = face.points.allSatisfy { abs($0.y-face.points[0].y)<0.00001 }
-            let factor = liesOnX ? 0.94/0.73 : (liesOnY ? 0.73/0.94 : 1)
-            return IsoFace(points:face.points.map { .init($0.y,$0.x,$0.z) },
-                           color:IsoColor.shade(face.color,factor),outline:face.outline)
+            var face = $0
+            // 镜像后重新按面朝向受光，材质本色保持不变。
+            face.points = face.points.map { .init($0.y,$0.x,$0.z) }
+            return face
         })
     }
 }
 
 /// 软件像素画布。深度缓冲只负责 2D 多边形的遮挡，避免书架隔板/沙发扶手穿透。
 /// 小尺寸图片仅生成一次并缓存；拖拽时不会重复栅格化。
-/// 流程分两步：先栅格化出“面颜色 + 深度”，再统一套 IsoPixelStyle（颗粒、凹角变暗、调色）。
+/// 世界坐标纹理 → 五档色阶 → 深度遮挡与边缘光；不再对所有材质统一撒噪点。
 nonisolated enum IsoRasterizer {
     static func render(_ mesh: IsoMesh, width: Int, height: Int, projection: IsoProjection) -> CGImage? {
         let count = width*height
         var colors = [UInt32](repeating: 0, count: count)
         var depths = [Double](repeating: -.infinity, count: count)
-        // 颗粒种子按面颜色区分：同色的大平面颗粒连续；0 表示描边像素，不加颗粒。
-        var seeds = [UInt32](repeating: 0, count: count)
+        var slopesX = [Double](repeating: 0, count: count)
+        var slopesY = [Double](repeating: 0, count: count)
 
-        func write(_ x: Int, _ y: Int, _ depth: Double, _ color: UInt32, seed: UInt32) {
+        func write(_ x: Int, _ y: Int, _ depth: Double, _ color: UInt32, dx: Double, dy: Double) {
             guard x >= 0, y >= 0, x < width, y < height else { return }
             let index = y*width+x
             guard depth >= depths[index]-0.00001 else { return }
             depths[index] = depth
             colors[index] = color
-            seeds[index] = seed
+            slopesX[index] = dx
+            slopesY[index] = dy
         }
 
         for face in mesh.faces {
             let p = face.points.map(projection.project)
             let d = face.points.map(projection.depth)
             guard p.count >= 3 else { continue }
-            let seed = (face.color & 0xFFFFFF) | 0x0100_0000
+            let normal = face.normal
+            let material = face.material == .automatic ? IsoMaterial.inferred(from: face.color) : face.material
+            let base = IsoPixelStyle.lighting(normal)
+                + (material == .plaster ? (1-abs(normal.z))*IsoPixelStyle.plasterLightLift : 0)
+            // 受光决定整块面的明暗；抖动只在材质的相近色之间变化。
+            let treatment = IsoPixelStyle.surfaceTreatment(material)
+            let litColor = IsoPixelStyle.ramp(face.color)[IsoPixelStyle.shadeIndex(base)]
+            let ramp = IsoPixelStyle.surfaceRamp(litColor,treatment:treatment)
+            let seed = face.color & 0xFFFFFF
+            let floorZ = face.points.map(\.z).min() ?? 0
+            let xs = face.points.map(\.x), ys = face.points.map(\.y)
+            let grainAlongX = (xs.max()! - xs.min()!) >= (ys.max()! - ys.min()!)
             for i in 1..<(p.count-1) {
                 let a=p[0], b=p[i], c=p[i+1]
                 let denominator=(b.y-c.y)*(a.x-c.x)+(c.x-b.x)*(a.y-c.y)
                 guard abs(denominator)>0.00001 else { continue }
+                let dx = ((b.y-c.y)*(d[0]-d[i+1])+(c.y-a.y)*(d[i]-d[i+1]))/denominator
+                let dy = ((c.x-b.x)*(d[0]-d[i+1])+(a.x-c.x)*(d[i]-d[i+1]))/denominator
                 let x0=max(0,Int(floor(min(a.x,b.x,c.x))))
                 let x1=min(width-1,Int(ceil(max(a.x,b.x,c.x))))
                 let y0=max(0,Int(floor(min(a.y,b.y,c.y))))
@@ -217,41 +246,59 @@ nonisolated enum IsoRasterizer {
                         let v=((c.y-a.y)*(px-c.x)+(a.x-c.x)*(py-c.y))/denominator
                         let w=1-u-v
                         if min(u,v,w)>=(-0.00001) {
-                            write(x,y,u*d[0]+v*d[i]+w*d[i+1],face.color,seed:seed)
+                            let worldA = face.points[0], worldB = face.points[i], worldC = face.points[i+1]
+                            let wx = u*worldA.x+v*worldB.x+w*worldC.x
+                            let wy = u*worldA.y+v*worldB.y+w*worldC.y
+                            let wz = u*worldA.z+v*worldB.z+w*worldC.z
+                            if let fade = face.dissolvesBelow, wz < fade {
+                                let keep = max(0, (wz-floorZ)/max(0.001,fade-floorZ))
+                                if IsoPixelStyle.hash(x,y,seed) > keep { continue }
+                            }
+                            let tu: Double, tv: Double
+                            if abs(normal.z) > 0.65 {
+                                tu = grainAlongX ? wx : wy
+                                tv = grainAlongX ? wy : wx
+                            } else {
+                                tu = abs(normal.x) > abs(normal.y) ? wy : wx
+                                tv = wz
+                            }
+                            let texture = IsoPixelStyle.texture(treatment,u:tu,v:tv,seed:seed)
+                            let tone = texture*Double(ramp.count)+(IsoPixelStyle.dither(x,y)-0.5)*treatment.ditherStrength
+                            let level = Int(min(Double(ramp.count-1),max(0,floor(tone))))
+                            write(x,y,u*d[0]+v*d[i]+w*d[i+1],ramp[level],dx:dx,dy:dy)
                         }
                     }
                 }
             }
-            if let outline=face.outline {
-                // 描边只比面色暗一点，靠明暗分面表达形体，而不是卡通黑线。
-                let edge = IsoPixelStyle.mix(face.color, outline, IsoPixelStyle.outlineStrength)
-                for i in p.indices {
-                    let j=(i+1)%p.count
-                    let steps=max(1,Int(ceil(max(abs(p[j].x-p[i].x),abs(p[j].y-p[i].y)))))
-                    for step in 0...steps {
-                        let t=Double(step)/Double(steps)
-                        write(Int((p[i].x+(p[j].x-p[i].x)*t).rounded()),
-                              Int((p[i].y+(p[j].y-p[i].y)*t).rounded()),
-                              d[i]+(d[j]-d[i])*t+0.04,edge,seed:0)
-                    }
-                }
-            }
+            // 不逐个多边形画边框；在完整深度图上处理轮廓，避免圆面出现一圈圈接缝。
         }
 
-        // 第二步：逐像素套风格。亮度系数 = 凹角遮蔽 × 表面颗粒，再统一调色。
+        // 凹角染紫，左上遮挡边补暖光；只改物体自己的像素，透明背景不会出现光晕。
         var pixels = [UInt8](repeating: 0, count: count*4)
         for y in 0..<height {
             for x in 0..<width {
                 let index = y*width+x
                 guard depths[index] > -.infinity else { continue }
-                let occlusion = IsoPixelStyle.occlusionFactor(
-                    occlusionAmount(x, y, depths: depths, width: width, height: height,
-                                    scale: projection.scale), x, y)
-                let grain = seeds[index] == 0 ? 1 : IsoPixelStyle.grain(x, y, seed: seeds[index])
-                let (r,g,b) = IsoPixelStyle.grade(colors[index], occlusion*grain)
-                pixels[index*4] = r
-                pixels[index*4+1] = g
-                pixels[index*4+2] = b
+                let amount = occlusionAmount(x,y,depths:depths,width:width,height:height,scale:projection.scale)
+                let ao = IsoPixelStyle.occlusionTint(amount)
+                var color = IsoPixelStyle.mix(colors[index],IsoPixelStyle.cool,ao)
+                let neighbors = [(x-1,y,-slopesX[index]),(x,y-1,-slopesY[index]),
+                                 (x+1,y,slopesX[index]),(x,y+1,slopesY[index])]
+                var boundary = false, rim = false, behind = false
+                for (k, neighbor) in neighbors.enumerated() {
+                    let (nx,ny,slope) = neighbor
+                    guard nx >= 0,ny >= 0,nx < width,ny < height else { boundary = true; continue }
+                    let depth = depths[ny*width+nx]
+                    if !depth.isFinite { boundary = true; continue }
+                    let jump = (depth-depths[index]-slope)*projection.scale
+                    if k < 2 && jump < -IsoPixelStyle.depthEdgeThreshold { rim = true }
+                    if k >= 2 && jump > IsoPixelStyle.depthEdgeThreshold { behind = true }
+                }
+                if boundary || behind { color = IsoPixelStyle.mix(color,IsoPixelStyle.cool,IsoPixelStyle.silhouetteTint) }
+                else if rim { color = IsoPixelStyle.mix(color,IsoPixelStyle.warm,IsoPixelStyle.rimTint) }
+                pixels[index*4] = UInt8((color>>16)&255)
+                pixels[index*4+1] = UInt8((color>>8)&255)
+                pixels[index*4+2] = UInt8(color&255)
                 pixels[index*4+3] = 255
             }
         }
@@ -284,42 +331,7 @@ nonisolated enum IsoRasterizer {
         return samples == 0 ? 0 : total/Double(samples)
     }
 
-    /// 地面软影单独成一张同尺寸透明图，垫在家具图下面：
-    /// 选中白边只根据家具本体生成，不会把影子也描进去。
-    static func groundShadow(_ mesh: IsoMesh, width: Int, height: Int, projection: IsoProjection) -> CGImage? {
-        let points = mesh.faces.flatMap(\.points)
-        guard let ground = points.map(\.z).min() else { return nil }
-        let base = points.filter { $0.z <= ground+IsoPixelStyle.shadowFootprintHeight }
-        guard let minX = base.map(\.x).min(), let maxX = base.map(\.x).max(),
-              let minY = base.map(\.y).min(), let maxY = base.map(\.y).max() else { return nil }
-        var pixels = [UInt8](repeating: 0, count: width*height*4)
-        let shadowColor = IsoPixelStyle.shadowColor
-        let s = projection.scale
-        for py in 0..<height {
-            for px in 0..<width {
-                // 屏幕点反投影到 z=ground 的地面上，得到世界坐标，再按占地矩形算远近。
-                let difference = (Double(px)+0.5-projection.origin.x)/s
-                let sum = 2*((Double(py)+0.5-projection.origin.y)/s+ground)
-                let wx = (sum+difference)*0.5-IsoPixelStyle.shadowOffsetX
-                let wy = (sum-difference)*0.5-IsoPixelStyle.shadowOffsetY
-                let distance = IsoPixelStyle.signedDistance(x:wx,y:wy,minX:minX,minY:minY,maxX:maxX,maxY:maxY)
-                // 离画布边越近越淡，到最外一圈完全透明。
-                let edge = Double(min(px, py, width-1-px, height-1-py))
-                let fade = min(1, edge/IsoPixelStyle.shadowEdgeFade)
-                let alpha = IsoPixelStyle.shadowAlpha(distance:distance,px,py)*fade
-                guard alpha > 0 else { continue }
-                // 画布是预乘透明度格式，颜色要先乘以 alpha。
-                let index = (py*width+px)*4
-                pixels[index] = UInt8((Double((shadowColor>>16)&255)*alpha).rounded())
-                pixels[index+1] = UInt8((Double((shadowColor>>8)&255)*alpha).rounded())
-                pixels[index+2] = UInt8((Double(shadowColor&255)*alpha).rounded())
-                pixels[index+3] = UInt8((255*alpha).rounded())
-            }
-        }
-        return image(pixels, width: width, height: height)
-    }
-
-    private static func image(_ pixels: [UInt8], width: Int, height: Int) -> CGImage? {
+    static func image(_ pixels: [UInt8], width: Int, height: Int) -> CGImage? {
         guard let provider=CGDataProvider(data:Data(pixels) as CFData) else { return nil }
         return CGImage(width:width,height:height,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:width*4,
                        space:CGColorSpaceCreateDeviceRGB(),

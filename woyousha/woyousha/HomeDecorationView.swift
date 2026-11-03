@@ -159,7 +159,8 @@ struct HomeDecorationView: View {
                 ForEach(containers.filter(\.isPlaced)) { container in
                     FurnitureView(container: container,
                                   isSelected: selectedContainerID == container.id.uuidString,
-                                  previewScale: selectedContainerID == container.id.uuidString ? previewScale : nil)
+                                  previewScale: selectedContainerID == container.id.uuidString ? previewScale : nil,
+                                  showsShadow: false)
                         .position(
                             x: container.posX + (draggingContainerID == container.id.uuidString ? dragOffset.width / effectiveScale : 0),
                             y: container.posY + (draggingContainerID == container.id.uuidString ? dragOffset.height / effectiveScale : 0)
@@ -216,6 +217,28 @@ struct HomeDecorationView: View {
                         }
                         .allowsHitTesting(isEditing)
                 }
+
+                // 影子先画在地板上，再由所有家具主体遮住；不会跨层盖黑前方的家具。
+                ZStack {
+                    ForEach(containers.filter(\.isPlaced)) { container in
+                        PixelFurnitureShadowView(
+                            styleID: FurnitureConfig.styleID(name:container.name,icon:container.icon,savedID:container.furnitureImageName),
+                            mirrored:container.isMirrored,
+                            scale:selectedContainerID == container.id.uuidString ? (previewScale ?? container.scale) : container.scale)
+                            .position(x:container.posX+(draggingContainerID == container.id.uuidString ? dragOffset.width/effectiveScale : 0),
+                                      y:container.posY+(draggingContainerID == container.id.uuidString ? dragOffset.height/effectiveScale : 0))
+                    }
+                    ForEach(decorationStore.decorations.filter(\.isPlaced)) { decoration in
+                        PixelDecorationShadowView(decoration:decoration,roomStyle:currentRoomImage,
+                            scaleOverride:selectedDecorationID == decoration.id ? decorationScalePreview : nil)
+                            .position(x:decoration.posX+(draggingDecorationID == decoration.id ? decorationDragOffset.width/effectiveScale : 0),
+                                      y:decoration.posY+(draggingDecorationID == decoration.id ? decorationDragOffset.height/effectiveScale : 0))
+                    }
+                }
+                .frame(width:RoomConfig.roomWidth,height:RoomConfig.roomHeight)
+                .clipShape(RoomFloorShadowMask())
+                .allowsHitTesting(false)
+                .zIndex(-940)
             }
             .frame(width: RoomConfig.roomWidth, height: RoomConfig.roomHeight)
             .scaleEffect(effectiveScale)
@@ -404,6 +427,7 @@ struct FurnitureView: View {
     let container: Container
     let isSelected: Bool
     var previewScale: Double?
+    var showsShadow = true
     @Environment(\.modelContext) private var modelContext
     @State private var isTargeted = false
     @State private var dropError: String?
@@ -411,7 +435,8 @@ struct FurnitureView: View {
     var body: some View {
         let styleID = FurnitureConfig.styleID(name: container.name, icon: container.icon, savedID: container.furnitureImageName)
         let size = FurnitureConfig.displaySize(for: container, scaleOverride: previewScale)
-        PixelFurnitureView(styleID: styleID, isMirrored: container.isMirrored, showsOutline: isSelected || isTargeted)
+        PixelFurnitureView(styleID: styleID, isMirrored: container.isMirrored,
+                           showsOutline: isSelected || isTargeted, showsShadow: showsShadow)
             .frame(width: size.width, height: size.height)
             .contentShape(Rectangle())
             .accessibilityLabel(container.name)
