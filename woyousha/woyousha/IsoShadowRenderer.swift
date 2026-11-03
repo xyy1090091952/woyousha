@@ -34,8 +34,8 @@ nonisolated enum IsoShadowRenderer {
         func fill(_ polygon: [CGPoint], value: UInt8) {
             guard polygon.count >= 3 else { return }
             let p = polygon.map { CGPoint(x:$0.x-bounds.minX,y:$0.y-bounds.minY) }
-            for triangle in 1..<(p.count-1) {
-                let a=p[0],b=p[triangle],c=p[triangle+1]
+            for (ia,ib,ic) in IsoPolygonTriangulator.triangles(p) {
+                let a=p[ia],b=p[ib],c=p[ic]
                 let denom=(b.y-c.y)*(a.x-c.x)+(c.x-b.x)*(a.y-c.y)
                 guard abs(denom)>0.00001 else { continue }
                 let x0=max(0,Int(floor(min(a.x,b.x,c.x)))),x1=min(width-1,Int(ceil(max(a.x,b.x,c.x))))

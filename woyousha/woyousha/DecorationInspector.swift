@@ -53,7 +53,7 @@ struct DecorationInspector: View {
             }
             .onChange(of:scaleDraft) { _,value in onPreviewScale(value) }
         }
-        .padding(16).tint(AppTheme.accent).foregroundStyle(AppTheme.text)
+        .padding(16).tint(AppTheme.accentText).foregroundStyle(AppTheme.text)
         .background(AppTheme.surface)
         .onDisappear { onPreviewScale(nil) }
     }

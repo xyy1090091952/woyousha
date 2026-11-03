@@ -239,7 +239,15 @@ nonisolated enum IsometricFurniture {
         m.cylinder(8,7,0,radius:8,height:24,color:PixelPalette.tealLight,topRadius:9)
         m.cylinder(8,7,24,radius:9.7,height:2,color:0xC6E2C9)
         m.cylinder(8,7,26.08,radius:7,height:0.2,color:dark)
-        for x in [3.0,7,11] { m.front(x,15.3,4,0.6,16,0x5B9A93) }
+        // 筋条跟随圆台表面半径，不再用悬在桶外的平面竖条。
+        // 角度与十二边桶身的棱线对应，普通和镜像都能贴合表面。
+        for angle in [Double.pi/6,Double.pi/3,Double.pi/2,Double.pi*2/3] {
+            func surface(_ z: Double) -> IsoPoint {
+                let radius = 8+z/24+0.12
+                return .init(8+cos(angle)*radius,7+sin(angle)*radius,z)
+            }
+            IsoCatalogParts.rod(&m,surface(4),surface(20),radius:0.22,color:0x5B9A93)
+        }
     }
 
     private static func window(_ m: inout IsoMesh, mirror: Bool) {

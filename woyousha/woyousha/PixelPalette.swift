@@ -2,18 +2,19 @@ import Foundation
 
 /// 自然材质本色。暖高光和偏紫暗部统一由 IsoPixelStyle 生成。
 nonisolated enum PixelPalette {
-    static let wood: UInt32 = 0xB68D66
-    static let woodLight: UInt32 = 0xD6BC8C
-    static let woodDark: UInt32 = 0x6F5642
-    static let cream: UInt32 = 0xE6DEC9
-    static let ink: UInt32 = 0x33303F
-    static let teal: UInt32 = 0x527F7A
-    static let tealLight: UInt32 = 0x81AA96
-    static let green: UInt32 = 0x647E48
-    static let greenLight: UInt32 = 0xA1AE69
-    static let coral: UInt32 = 0xBA7762
-    static let blue: UInt32 = 0x607D98
-    static let yellow: UInt32 = 0xDAB75E
-    static let purple: UInt32 = 0x9A809D
-    static let bookColors: [UInt32] = [blue, coral, green, yellow, purple, teal, 0xCE9A60]
+    static let wood: UInt32 = 0xCD985D
+    static let woodLight: UInt32 = 0xE8BB7C
+    static let woodDark = OyohaPalette.trim
+    static let cream = OyohaPalette.cream
+    static let ink: UInt32 = 0x403139
+    // 暖屋里用少量鲜明的冷色点缀，避免所有家具都混成灰褐色。
+    static let teal: UInt32 = 0x3F9A91
+    static let tealLight: UInt32 = 0x91CAB3
+    static let green: UInt32 = 0x71964A
+    static let greenLight: UInt32 = 0xB2CA73
+    static let coral: UInt32 = 0xE78F71
+    static let blue: UInt32 = 0x6399BF
+    static let yellow = OyohaPalette.honey
+    static let purple: UInt32 = 0xB793BE
+    static let bookColors: [UInt32] = [blue, coral, green, yellow, purple, teal, 0xE0A25E]
 }

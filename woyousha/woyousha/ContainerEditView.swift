@@ -88,7 +88,7 @@ struct ContainerEditView: View {
                 Button("知道了", role: .cancel) { errorMessage = nil }
             } message: { Text(errorMessage ?? "") }
         }
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
     }
 
     /// 主页面只保留一个造型入口，完整目录复用装修页的搜索抽屉。

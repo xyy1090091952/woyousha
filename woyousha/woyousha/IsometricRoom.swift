@@ -15,9 +15,11 @@ nonisolated enum IsometricRoom {
 
     static func model(style: String) -> IsoMesh {
         let green = style == "home2"
-        let wall: UInt32 = green ? 0xA7B8A0 : 0xE8DFC8
-        let trim: UInt32 = green ? 0x5D7766 : 0xA58461
-        let wood: UInt32 = green ? 0xB6986E : 0xBE996D
+        // home1 是现有默认家的编号，只更新外观，不改写用户保存的风格选择。
+        // 默认家取用户 home2.png 的奶油杏墙、橘金木地板；森林家保留独立配色。
+        let wall: UInt32 = green ? 0xBCCCAF : OyohaPalette.wall
+        let trim: UInt32 = green ? 0x62816A : OyohaPalette.trim
+        let wood: UInt32 = green ? 0xC5A475 : OyohaPalette.floor
         var m = IsoMesh()
         m.box(-4,-4,-7,136,136,7,trim,material:.wood)
         // 底座最下方以完整/透明像素消融到背景，家具的边缘不参与消融。

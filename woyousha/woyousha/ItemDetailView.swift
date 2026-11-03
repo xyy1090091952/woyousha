@@ -19,7 +19,7 @@ struct ItemDetailView: View {
                         .textSelection(.enabled)
                     Label(item.category.rawValue, systemImage: item.category.symbol)
                         .font(.subheadline)
-                        .foregroundStyle(AppTheme.accent)
+                        .foregroundStyle(AppTheme.accentText)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(AppTheme.inset, in: Capsule())
@@ -56,14 +56,14 @@ struct ItemDetailView: View {
             }
         }
         .toolbarBackground(AppTheme.background, for: .navigationBar)
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
         .sheet(isPresented: $showEditSheet) { AddItemView(itemToEdit: item) }
     }
 
     private func informationRow(_ title: String, value: String, symbol: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
-                .foregroundStyle(AppTheme.accent)
+                .foregroundStyle(AppTheme.accentText)
                 .frame(width: 22)
             Text(title).foregroundStyle(AppTheme.secondaryText)
             Spacer(minLength: 8)

@@ -173,6 +173,17 @@ nonisolated struct IsoMesh {
             face([back[i],back[j],front[j],front[i]],color)
         }
     }
+    /// 沿 x 轴挤出 y/z 侧轮廓，给斜靠背、脚托、摇椅底架真实厚度。
+    mutating func sideProfile(_ points: [(Double,Double)], x: Double, width: Double, color: UInt32) {
+        let left = points.map { IsoPoint(x,$0.0,$0.1) }
+        let right = points.map { IsoPoint(x+width,$0.0,$0.1) }
+        face(left,color)
+        face(right,color)
+        for i in points.indices {
+            let j = (i+1)%points.count
+            face([left[i],left[j],right[j],right[i]],color)
+        }
+    }
     mutating func merge(_ other: IsoMesh, at position: IsoPoint = .init(0,0,0)) {
         for var face in other.faces {
             face.points = face.points.map { $0.offset(position) }
@@ -228,12 +239,12 @@ nonisolated enum IsoRasterizer {
             let floorZ = face.points.map(\.z).min() ?? 0
             let xs = face.points.map(\.x), ys = face.points.map(\.y)
             let grainAlongX = (xs.max()! - xs.min()!) >= (ys.max()! - ys.min()!)
-            for i in 1..<(p.count-1) {
-                let a=p[0], b=p[i], c=p[i+1]
+            for (ia,ib,ic) in IsoPolygonTriangulator.triangles(p) {
+                let a=p[ia], b=p[ib], c=p[ic]
                 let denominator=(b.y-c.y)*(a.x-c.x)+(c.x-b.x)*(a.y-c.y)
                 guard abs(denominator)>0.00001 else { continue }
-                let dx = ((b.y-c.y)*(d[0]-d[i+1])+(c.y-a.y)*(d[i]-d[i+1]))/denominator
-                let dy = ((c.x-b.x)*(d[0]-d[i+1])+(a.x-c.x)*(d[i]-d[i+1]))/denominator
+                let dx = ((b.y-c.y)*(d[ia]-d[ic])+(c.y-a.y)*(d[ib]-d[ic]))/denominator
+                let dy = ((c.x-b.x)*(d[ia]-d[ic])+(a.x-c.x)*(d[ib]-d[ic]))/denominator
                 let x0=max(0,Int(floor(min(a.x,b.x,c.x))))
                 let x1=min(width-1,Int(ceil(max(a.x,b.x,c.x))))
                 let y0=max(0,Int(floor(min(a.y,b.y,c.y))))
@@ -246,7 +257,7 @@ nonisolated enum IsoRasterizer {
                         let v=((c.y-a.y)*(px-c.x)+(a.x-c.x)*(py-c.y))/denominator
                         let w=1-u-v
                         if min(u,v,w)>=(-0.00001) {
-                            let worldA = face.points[0], worldB = face.points[i], worldC = face.points[i+1]
+                            let worldA = face.points[ia], worldB = face.points[ib], worldC = face.points[ic]
                             let wx = u*worldA.x+v*worldB.x+w*worldC.x
                             let wy = u*worldA.y+v*worldB.y+w*worldC.y
                             let wz = u*worldA.z+v*worldB.z+w*worldC.z
@@ -265,7 +276,7 @@ nonisolated enum IsoRasterizer {
                             let texture = IsoPixelStyle.texture(treatment,u:tu,v:tv,seed:seed)
                             let tone = texture*Double(ramp.count)+(IsoPixelStyle.dither(x,y)-0.5)*treatment.ditherStrength
                             let level = Int(min(Double(ramp.count-1),max(0,floor(tone))))
-                            write(x,y,u*d[0]+v*d[i]+w*d[i+1],ramp[level],dx:dx,dy:dy)
+                            write(x,y,u*d[ia]+v*d[ib]+w*d[ic],ramp[level],dx:dx,dy:dy)
                         }
                     }
                 }

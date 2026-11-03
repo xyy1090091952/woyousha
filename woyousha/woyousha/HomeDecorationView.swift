@@ -119,7 +119,7 @@ struct HomeDecorationView: View {
                 .toolbarBackground(AppTheme.background, for: .navigationBar)
             }
         }
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
         .onAppear { restoreViewport() }
         .onChange(of: selectedContainerID) { _, id in
             previewScale = nil
@@ -159,8 +159,7 @@ struct HomeDecorationView: View {
                 ForEach(containers.filter(\.isPlaced)) { container in
                     FurnitureView(container: container,
                                   isSelected: selectedContainerID == container.id.uuidString,
-                                  previewScale: selectedContainerID == container.id.uuidString ? previewScale : nil,
-                                  showsShadow: false)
+                                  previewScale: selectedContainerID == container.id.uuidString ? previewScale : nil)
                         .position(
                             x: container.posX + (draggingContainerID == container.id.uuidString ? dragOffset.width / effectiveScale : 0),
                             y: container.posY + (draggingContainerID == container.id.uuidString ? dragOffset.height / effectiveScale : 0)
@@ -427,7 +426,6 @@ struct FurnitureView: View {
     let container: Container
     let isSelected: Bool
     var previewScale: Double?
-    var showsShadow = true
     @Environment(\.modelContext) private var modelContext
     @State private var isTargeted = false
     @State private var dropError: String?
@@ -436,7 +434,7 @@ struct FurnitureView: View {
         let styleID = FurnitureConfig.styleID(name: container.name, icon: container.icon, savedID: container.furnitureImageName)
         let size = FurnitureConfig.displaySize(for: container, scaleOverride: previewScale)
         PixelFurnitureView(styleID: styleID, isMirrored: container.isMirrored,
-                           showsOutline: isSelected || isTargeted, showsShadow: showsShadow)
+                           showsOutline: isSelected || isTargeted)
             .frame(width: size.width, height: size.height)
             .contentShape(Rectangle())
             .accessibilityLabel(container.name)

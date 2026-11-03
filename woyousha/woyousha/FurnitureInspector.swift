@@ -81,7 +81,7 @@ struct FurnitureInspector: View {
         }
         .padding(16)
         .foregroundStyle(AppTheme.text)
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
         .background(AppTheme.surface)
         .overlay(alignment: .top) { Rectangle().fill(AppTheme.line).frame(height: 2) }
         .sheet(isPresented: $showStyles) {

@@ -21,15 +21,19 @@ nonisolated enum IsoLivingFurniture {
             for x in [2.0,20] { for y in [12.0,30] { m.box(x,y,0,2.5,2.5,9,p.woodDark) } }
             m.roundedBox(0,10,8,25,24,6,radius:3,color:p.blue)
             // 斜靠背和抬起的脚托，与普通扶手椅的剪影区分。
-            m.face([.init(1,13,14),.init(24,13,14),.init(24,2,36),.init(1,2,36)],p.blue)
+            m.sideProfile([(13,12),(2,34),(2,38),(13,16)],x:1,width:23,color:p.blue)
             m.box(0,12,14,4,20,9,p.blue)
             m.box(21,12,14,4,20,9,p.blue)
-            m.face([.init(3,30,14),.init(22,30,14),.init(22,46,10),.init(3,46,10)],p.tealLight)
+            m.sideProfile([(30,11),(46,7),(46,10),(30,14)],x:3,width:19,color:p.tealLight)
+            // 支撑杆从椅架连到脚托底面，抬起的脚托不会成为悬空薄片。
+            for x in [6.0,19] {
+                IsoCatalogParts.rod(&m,.init(x,27,8),.init(x,40,8.5),radius:0.8,color:p.woodDark)
+            }
         case "rocking-chair":
             IsoCatalogParts.chair(&m,width:22,depth:25,seat:15,back:39,color:p.woodLight)
             for x in [1.0,19] {
-                m.face([.init(x,-3,4),.init(x,8,0),.init(x,24,0),.init(x,34,5),
-                        .init(x,33,7),.init(x,23,2),.init(x,9,2),.init(x,-2,6)],p.woodDark)
+                m.sideProfile([(-3,4),(8,0),(24,0),(34,5),
+                               (33,7),(23,2),(9,2),(-2,6)],x:x,width:2,color:p.woodDark)
                 m.box(x,4,25,2,23,2,p.wood)
                 m.box(x,22,18,2,2,8,p.wood)
             }

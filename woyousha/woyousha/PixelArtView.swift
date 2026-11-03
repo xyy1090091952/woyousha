@@ -88,36 +88,15 @@ private enum PixelArtCache {
     }
 }
 
-/// 目录缩略图按“主体 + 投影”的完整范围排版，长影子不会溢出盖住名称。
-/// 房间主体不带投影排版，因此原有尺寸、点击范围和保存位置保持一致。
+/// 图标与房间主体只按家具本身排版。影子只能由独立的地面组件显示。
+/// 从入口移除投影参数，避免未来新增目录时再次把长影子混进缩略图。
 private struct PixelSpriteImage: View {
     let image: CGImage
-    let shadow: PixelArtShadow?
-    let contentBounds: CGRect
 
     var body: some View {
-        if let shadow {
-            let sprite = PixelArtRenderer.spriteBounds(contentBounds:contentBounds)
-            let union = sprite.union(shadow.bounds)
-            GeometryReader { geometry in
-                let factor = geometry.size.width/union.width
-                ZStack {
-                    Image(decorative:shadow.image,scale:1)
-                        .resizable().interpolation(.none)
-                        .frame(width:shadow.bounds.width*factor,height:shadow.bounds.height*factor)
-                        .position(x:(shadow.bounds.midX-union.minX)*factor,y:(shadow.bounds.midY-union.minY)*factor)
-                    Image(decorative:image,scale:1)
-                        .resizable().interpolation(.none)
-                        .frame(width:sprite.width*factor,height:sprite.height*factor)
-                        .position(x:(sprite.midX-union.minX)*factor,y:(sprite.midY-union.minY)*factor)
-                }
-            }
-            .aspectRatio(union.width/union.height,contentMode:.fit)
-        } else {
-            Image(decorative:image,scale:1)
-                .resizable().interpolation(.none)
-                .aspectRatio(CGFloat(image.width)/CGFloat(image.height),contentMode:.fit)
-        }
+        Image(decorative:image,scale:1)
+            .resizable().interpolation(.none)
+            .aspectRatio(CGFloat(image.width)/CGFloat(image.height),contentMode:.fit)
     }
 }
 
@@ -125,8 +104,6 @@ struct PixelFurnitureView: View {
     let styleID: String
     var isMirrored = false
     var showsOutline = false
-    /// 脚下柔和的地面影子；挂墙家具本身就没有影子。
-    var showsShadow = true
 
     var body: some View {
         let original = PixelArtCache.image(id: styleID, isRoom: false, mirrored: isMirrored)
@@ -134,9 +111,7 @@ struct PixelFurnitureView: View {
             ? (PixelArtCache.furnitureOutline(id: styleID, mirrored: isMirrored) ?? original)
             : original
         if let image {
-            PixelSpriteImage(image: image,
-                             shadow: showsShadow ? PixelArtCache.furnitureShadow(id: styleID, mirrored: isMirrored) : nil,
-                             contentBounds:PixelArtCache.bounds(id:styleID,mirrored:isMirrored))
+            PixelSpriteImage(image: image)
         }
     }
 }
@@ -158,16 +133,13 @@ struct PixelDecorationView: View {
     var roomStyle = "home1"
     var mirrored = false
     var showsOutline = false
-    var showsShadow = true
     var body: some View {
         let original = PixelArtCache.decoration(kind: kind, style: roomStyle, mirrored: mirrored)
         let image = showsOutline
             ? (PixelArtCache.decorationOutline(kind: kind, style: roomStyle, mirrored: mirrored) ?? original)
             : original
         if let image {
-            PixelSpriteImage(image: image,
-                             shadow: showsShadow ? PixelArtCache.decorationShadow(kind: kind, style: roomStyle, mirrored: mirrored) : nil,
-                             contentBounds:PixelArtCache.bounds(kind:kind,mirrored:mirrored))
+            PixelSpriteImage(image: image)
         }
     }
 }
@@ -185,7 +157,7 @@ struct DecorationPlacementView: View {
             * PixelArtRenderer.roomPixelScale / PixelArtRenderer.furniturePixelScale
             * (scaleOverride ?? decoration.scale)
         PixelDecorationView(kind:decoration.kind,roomStyle:roomStyle,mirrored:decoration.isMirrored,
-                            showsOutline:isSelected,showsShadow:false)
+                            showsOutline:isSelected)
             .frame(width:Double(image?.width ?? 1)*factor,height:Double(image?.height ?? 1)*factor)
             .contentShape(Rectangle())
             // 模型以地面接触点或墙面锚点放置，而不是按位图中心放置。

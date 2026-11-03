@@ -48,7 +48,7 @@ struct PhotoProcessingTimingView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
             }
         }
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
     }
 
     private func duration(_ milliseconds: Double) -> String {

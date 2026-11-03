@@ -187,7 +187,7 @@ struct ContentView: View {
                 }
             }
         }
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
     }
     
     // 装修模式的全屏覆盖

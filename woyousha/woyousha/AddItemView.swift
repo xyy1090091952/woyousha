@@ -175,7 +175,7 @@ struct AddItemView: View {
                 Button("知道了", role: .cancel) { camera.captureError = nil }
             } message: { Text(camera.captureError ?? "") }
         }
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
         #if DEBUG
         .sheet(isPresented: $showPhotoTiming) {
             if let performance = editor.lastPhotoPerformance {
@@ -229,7 +229,7 @@ struct AddItemView: View {
                     if editor.isProcessing {
                         VStack(spacing: 8) {
                             HStack(spacing: 10) {
-                                ProgressView().tint(AppTheme.accent)
+                                ProgressView().tint(AppTheme.accentText)
                                 Text(editor.photoMessage).font(.subheadline.weight(.semibold))
                             }
                             if editor.processingIsTakingLong {

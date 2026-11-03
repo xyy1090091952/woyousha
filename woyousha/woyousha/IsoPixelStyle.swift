@@ -3,20 +3,21 @@ import Foundation
 /// Pixel Plays 的视觉规则：有限色阶、暖高光/紫暗部、材质纹理和清晰投影。
 /// 色阶与 Bayer 抖动参考其 MIT 开源引擎，许可保存在 PixelPlays-LICENSE.txt。
 nonisolated enum IsoPixelStyle {
-    static let cool: UInt32 = 0x2E2654
-    static let warm: UInt32 = 0xFFE8B4
-    static let shadeMultipliers = [0.4, 0.62, 0.84, 1.0, 1.1]
-    static let shadeTintAmounts = [0.34, 0.18, 0.05, 0.0, 0.22]
+    static let cool: UInt32 = 0x59445F
+    static let warm: UInt32 = 0xFFECC5
+    // 暗面仍带紫，但减轻全局压暗，让木色、珊瑚色和蓝绿保留各自本色。
+    static let shadeMultipliers = [0.58, 0.76, 0.92, 1.0, 1.08]
+    static let shadeTintAmounts = [0.22, 0.10, 0.025, 0.0, 0.16]
     static let lightingRoundingBias = 0.2
     /// 大面积浅墙面的色阶更靠近，避免把网点读成黑白棋盘。
     static let plasterLightLift = 1.0
-    static let silhouetteTint = 0.22
+    static let silhouetteTint = 0.18
     static let rimTint = 0.25
     static let depthEdgeThreshold = 0.6
     static let occlusionRadii = [1, 2, 3]
     static let occlusionBias = 0.25
     static let occlusionRange = 6.0
-    static let occlusionStrength = 0.36
+    static let occlusionStrength = 0.26
     static let occlusionSteps = 8.0
 
     // 大平面只在相近色之间变化，纹理不跨越整个受光色阶。
@@ -39,8 +40,8 @@ nonisolated enum IsoPixelStyle {
     // 光从左上方照入，物体越高，向屏幕右侧投出的影子越长。
     static let shadowDirectionX = 0.72
     static let shadowDirectionY = -0.12
-    static let shadowOpacity = 0.42
-    static let contactOpacity = 0.54
+    static let shadowOpacity = 0.30
+    static let contactOpacity = 0.42
     static let shadowPadding = 3.0
     static let contactHeight = 2.5
     static let shadowEdgeDither = 0.22

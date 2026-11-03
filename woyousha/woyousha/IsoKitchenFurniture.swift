@@ -63,7 +63,8 @@ nonisolated enum IsoKitchenFurniture {
             m.cylinder(11,11,2,radius:9,height:14,color:p.coral,topRadius:6,sides:20)
             m.cylinder(11,11,16,radius:6,height:2,color:p.cream)
             m.cylinder(11,11,18,radius:1.4,height:1.4,color:p.ink)
-            m.profile([(2,7),(-4,15),(-4,18),(4,14)],y:9,depth:3,color:p.coral)
+            // 壶身越往上越收窄，壶嘴根部要伸入壶身，不能按底部半径接到空气中。
+            m.profile([(6,7),(-4,15),(-4,18),(7,14)],y:9,depth:3,color:p.coral)
             for (a,b) in [(IsoPoint(18,10,14),IsoPoint(24,10,13)),
                           (.init(24,10,13),.init(24,10,5)),(.init(24,10,5),.init(19,10,5))] {
                 IsoCatalogParts.rod(&m,a,b,radius:1.3,color:p.ink)

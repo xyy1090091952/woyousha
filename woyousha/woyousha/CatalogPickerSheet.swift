@@ -128,7 +128,7 @@ struct CatalogPickerSheet<Entry: Identifiable, Tab: CatalogTab, Thumbnail: View>
                 Text("请再试一次。")
             }
         }
-        .tint(AppTheme.accent)
+        .tint(AppTheme.accentText)
     }
 
     /// 分类 tab 固定在列表上方；“全部”在最前，其余按目录顺序排列。
