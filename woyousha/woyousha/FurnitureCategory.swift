@@ -1,5 +1,6 @@
 import Foundation
 
+/// 细分组只决定“用哪个造型文件来画”，以及图标与搜索同义词；不在界面上直接展示。
 /// 分类只用于目录查找，不写入容器模型，也不改变已有房间布置。
 nonisolated enum FurnitureCategory: String, CaseIterable, Identifiable {
     case bedroom, livingRoom, study, kitchen, bathroom
@@ -20,23 +21,55 @@ nonisolated enum FurnitureCategory: String, CaseIterable, Identifiable {
         case .lighting: return "灯具"
         }
     }
-}
 
-/// 搜索、分类和新增条件在一处取交集，所有造型选择入口保持相同结果。
-nonisolated struct FurnitureCatalogQuery {
-    var category: FurnitureCategory?
-    var onlyNew = false
-    var searchText = ""
-
-    var hasFilters: Bool {
-        category != nil || onlyNew || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    func matches(_ config: FurnitureConfig) -> Bool {
-        if let category, config.category != category { return false }
-        if onlyNew && !config.isNew { return false }
-        let tokens = searchText.split(whereSeparator: \.isWhitespace)
-        let text = ([config.name, config.category.title] + config.searchKeywords).joined(separator: " ")
-        return tokens.allSatisfy { text.localizedStandardContains(String($0)) }
+    /// 浮层只显示 6 个 tab：把相近的细分组合并，好比商场把“男装/女装”合成“服饰”一层。
+    var tab: FurnitureTab {
+        switch self {
+        case .bedroom: return .bedroom
+        case .livingRoom, .appliances, .lighting: return .livingRoom
+        case .study: return .study
+        case .kitchen, .bathroom: return .kitchenAndBath
+        case .storage: return .storage
+        case .childrenAndPets, .outdoor: return .leisure
+        }
     }
 }
+
+/// 家具目录浮层的 6 个分类 tab。
+nonisolated enum FurnitureTab: String, CatalogTab {
+    case bedroom, livingRoom, study, kitchenAndBath, storage, leisure
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .bedroom: return "卧室"
+        case .livingRoom: return "客厅"
+        case .study: return "书房"
+        case .kitchenAndBath: return "厨卫"
+        case .storage: return "收纳"
+        case .leisure: return "休闲户外"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .bedroom: return "bed.double.fill"
+        case .livingRoom: return "sofa.fill"
+        case .study: return "books.vertical.fill"
+        case .kitchenAndBath: return "fork.knife"
+        case .storage: return "archivebox.fill"
+        case .leisure: return "leaf.fill"
+        }
+    }
+}
+
+extension FurnitureConfig {
+    var tab: FurnitureTab { category.tab }
+
+    /// 搜索同时覆盖名称、tab 名、细分组名与同义词，例如搜“宠物”“灯”依然能找到。
+    var catalogSearchText: String {
+        ([name, tab.title, category.title] + searchKeywords).joined(separator: " ")
+    }
+}
+
+/// 家具目录的筛选条件：一个 tab + 搜索词。
+typealias FurnitureCatalogQuery = CatalogQuery<FurnitureTab>

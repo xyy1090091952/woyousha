@@ -42,7 +42,9 @@ struct StickerGridItemView: View {
             }
             .frame(height: height)
             .frame(maxWidth: .infinity)
-            StickerOutlinedText(text: item.name, pointSize: StickerStyle.nameFontSize(height: height), lineLimit: 2)
+            // 名称直接占满整列，只有整列宽度都放不下两行时才出现省略号。
+            StickerOutlinedText(text: item.name, pointSize: StickerStyle.nameFontSize(height: height),
+                                lineLimit: 2, fillsProposedWidth: true)
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
         }

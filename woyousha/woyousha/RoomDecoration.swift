@@ -38,6 +38,13 @@ nonisolated struct RoomDecoration: Identifiable, Codable, Equatable {
             }
         }
         var isFloorCovering: Bool { self == .rug }
+        /// 挂在墙上的装饰不落地，不投地面影子。
+        var isWallMounted: Bool {
+            switch self {
+            case .window, .picture, .wallShelf, .calendar, .clock: return true
+            default: return false
+            }
+        }
     }
 }
 

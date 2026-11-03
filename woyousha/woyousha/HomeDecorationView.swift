@@ -32,6 +32,7 @@ struct HomeDecorationView: View {
     @State private var decorationScalePreview: Double?
     @State private var drawerCategory = DrawerCategory.furniture
     @State private var showsFurnitureCatalog = false
+    @State private var showsDecorationCatalog = false
 
     private enum DrawerCategory: String, CaseIterable {
         case furniture = "家具"
@@ -131,6 +132,10 @@ struct HomeDecorationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .resetHomeView)) { _ in resetViewport() }
         .sheet(isPresented: $showsFurnitureCatalog) {
             FurnitureCatalogPicker(title: "添加家具", dismissOnSelection: true, onSelect: addFurniture)
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showsDecorationCatalog) {
+            DecorationCatalogPicker(roomStyle: currentRoomImage, onSelect: addDecoration)
                 .presentationDetents([.medium, .large])
         }
         .alert("布置没有保存", isPresented: Binding(
@@ -249,7 +254,8 @@ struct HomeDecorationView: View {
                 Text(drawerCategory == .furniture ? "待布置的家具":"装饰物")
                     .font(.system(.headline, design: .rounded, weight: .heavy))
                 Spacer()
-                Text("轻点放入房间").font(.caption).foregroundStyle(AppTheme.secondaryText)
+                Text(drawerCategory == .furniture ? "轻点放入房间" : "按分类挑选装饰")
+                    .font(.caption).foregroundStyle(AppTheme.secondaryText)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -269,19 +275,7 @@ struct HomeDecorationView: View {
 
     @ViewBuilder
     private var furnitureTiles: some View {
-        Button { showsFurnitureCatalog = true } label: {
-            VStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 26, weight: .bold))
-                    .frame(width: 68, height: 70)
-                Text("添加家具").font(.caption.weight(.bold))
-            }
-            .frame(width: 84)
-            .padding(8)
-            .foregroundStyle(AppTheme.accentText)
-            .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 18))
-        }
-        .buttonStyle(.plain)
+        addTile(title: "添加家具") { showsFurnitureCatalog = true }
         let unplaced = containers.filter { !$0.isPlaced }
         if unplaced.isEmpty {
             Text("添加新家具，或轻点房间里的家具调整。")
@@ -302,24 +296,40 @@ struct HomeDecorationView: View {
         }
     }
 
+    /// 与家具同一种入口：先点“添加装饰”打开带分类 tab 的目录浮层，再挑选放入房间。
+    @ViewBuilder
     private var decorationTiles: some View {
-        ForEach(RoomDecoration.Kind.allCases, id: \.self) { kind in
-            Button {
-                do {
-                    let addedID = try decorationStore.add(kind: kind, furnitureLayers: containers.filter(\.isPlaced).map(\.zIndex))
-                    selectedContainerID = nil
-                    selectedDecorationID = addedID
-                } catch { errorMessage = "装饰物没有添加成功，请重试。" }
-            } label: {
-                VStack(spacing: 6) {
-                    PixelDecorationView(kind: kind, roomStyle: currentRoomImage).frame(width: 68, height: 70)
-                    Label(kind.title, systemImage: "plus").font(.caption.weight(.bold))
-                }
-                .frame(width: 84)
-                .padding(8)
-                .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 18))
+        addTile(title: "添加装饰") { showsDecorationCatalog = true }
+        Text("挑选后会放进房间，轻点房间里的装饰可调整。")
+            .font(.subheadline).foregroundStyle(AppTheme.secondaryText).padding(.vertical, 24)
+    }
+
+    /// 抽屉里的“＋”入口，家具和装饰共用同一外观。
+    private func addTile(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 26, weight: .bold))
+                    .frame(width: 68, height: 70)
+                Text(title).font(.caption.weight(.bold))
             }
-            .buttonStyle(.plain)
+            .frame(width: 84)
+            .padding(8)
+            .foregroundStyle(AppTheme.accentText)
+            .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 目录浮层回调：保存成功才关闭浮层并选中新装饰；失败时浮层内提示重试。
+    private func addDecoration(kind: RoomDecoration.Kind) -> Bool {
+        do {
+            let addedID = try decorationStore.add(kind: kind, furnitureLayers: containers.filter(\.isPlaced).map(\.zIndex))
+            selectedContainerID = nil
+            selectedDecorationID = addedID
+            return true
+        } catch {
+            return false
         }
     }
 

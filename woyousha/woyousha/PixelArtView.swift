@@ -1,13 +1,16 @@
 import SwiftUI
 
 /// 缓存只包含代码绘制的小图。拖动家具不会逐帧重画，也不会读取 Assets。
+/// 地面影子单独缓存：它垫在主体下面，选中白边只沿主体描，不会把影子也描进去。
 @MainActor
 private enum PixelArtCache {
     static var furniture: [String: CGImage] = [:]
     static var furnitureOutlines: [String: CGImage] = [:]
+    static var furnitureShadows: [String: CGImage?] = [:]
     static var rooms: [String: CGImage] = [:]
     static var decorations: [String: CGImage] = [:]
     static var decorationOutlines: [String: CGImage] = [:]
+    static var decorationShadows: [String: CGImage?] = [:]
 
     static func image(id: String, isRoom: Bool, mirrored: Bool = false) -> CGImage? {
         if isRoom {
@@ -32,6 +35,23 @@ private enum PixelArtCache {
         return outlined
     }
 
+    /// 挂墙家具没有影子，缓存里存 nil，避免反复计算。
+    static func furnitureShadow(id: String, mirrored: Bool) -> CGImage? {
+        let key = id + (mirrored ? "-mirrored" : "")
+        if let cached = furnitureShadows[key] { return cached }
+        let shadow = PixelArtRenderer.furnitureShadow(id: id, mirrored: mirrored)
+        furnitureShadows[key] = .some(shadow)
+        return shadow
+    }
+
+    static func decorationShadow(kind: RoomDecoration.Kind, style: String, mirrored: Bool) -> CGImage? {
+        let key = kind.rawValue + style + (mirrored ? "-mirror" : "")
+        if let cached = decorationShadows[key] { return cached }
+        let shadow = PixelArtRenderer.decorationShadow(kind: kind, style: style, mirrored: mirrored)
+        decorationShadows[key] = .some(shadow)
+        return shadow
+    }
+
     static func decoration(kind: RoomDecoration.Kind, style: String, mirrored: Bool) -> CGImage? {
         let key = kind.rawValue + style + (mirrored ? "-mirror" : "")
         if let image = decorations[key] { return image }
@@ -50,10 +70,32 @@ private enum PixelArtCache {
     }
 }
 
+/// 家具/装饰共用的“影子 + 主体”叠放。影子与主体同尺寸同原点，叠在一起不会错位。
+private struct PixelSpriteImage: View {
+    let image: CGImage
+    let shadow: CGImage?
+
+    var body: some View {
+        ZStack {
+            if let shadow {
+                Image(decorative: shadow, scale: 1)
+                    .resizable()
+                    .interpolation(.none)
+            }
+            Image(decorative: image, scale: 1)
+                .resizable()
+                .interpolation(.none)
+        }
+        .aspectRatio(CGFloat(image.width) / CGFloat(image.height), contentMode: .fit)
+    }
+}
+
 struct PixelFurnitureView: View {
     let styleID: String
     var isMirrored = false
     var showsOutline = false
+    /// 脚下柔和的地面影子；挂墙家具本身就没有影子。
+    var showsShadow = true
 
     var body: some View {
         let original = PixelArtCache.image(id: styleID, isRoom: false, mirrored: isMirrored)
@@ -61,10 +103,8 @@ struct PixelFurnitureView: View {
             ? (PixelArtCache.furnitureOutline(id: styleID, mirrored: isMirrored) ?? original)
             : original
         if let image {
-            Image(decorative: image, scale: 1)
-                .resizable()
-                .interpolation(.none)
-                .aspectRatio(CGFloat(image.width) / CGFloat(image.height), contentMode: .fit)
+            PixelSpriteImage(image: image,
+                             shadow: showsShadow ? PixelArtCache.furnitureShadow(id: styleID, mirrored: isMirrored) : nil)
         }
     }
 }
@@ -86,15 +126,15 @@ struct PixelDecorationView: View {
     var roomStyle = "home1"
     var mirrored = false
     var showsOutline = false
+    var showsShadow = true
     var body: some View {
         let original = PixelArtCache.decoration(kind: kind, style: roomStyle, mirrored: mirrored)
         let image = showsOutline
             ? (PixelArtCache.decorationOutline(kind: kind, style: roomStyle, mirrored: mirrored) ?? original)
             : original
         if let image {
-            Image(decorative:image,scale:1)
-                .resizable().interpolation(.none)
-                .aspectRatio(CGFloat(image.width)/CGFloat(image.height),contentMode:.fit)
+            PixelSpriteImage(image: image,
+                             shadow: showsShadow ? PixelArtCache.decorationShadow(kind: kind, style: roomStyle, mirrored: mirrored) : nil)
         }
     }
 }

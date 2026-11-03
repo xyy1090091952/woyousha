@@ -178,26 +178,29 @@ nonisolated struct IsoMesh {
 
 /// 软件像素画布。深度缓冲只负责 2D 多边形的遮挡，避免书架隔板/沙发扶手穿透。
 /// 小尺寸图片仅生成一次并缓存；拖拽时不会重复栅格化。
+/// 流程分两步：先栅格化出“面颜色 + 深度”，再统一套 IsoPixelStyle（颗粒、凹角变暗、调色）。
 nonisolated enum IsoRasterizer {
     static func render(_ mesh: IsoMesh, width: Int, height: Int, projection: IsoProjection) -> CGImage? {
-        var pixels = [UInt8](repeating: 0, count: width*height*4)
-        var depths = [Double](repeating: -.infinity, count: width*height)
+        let count = width*height
+        var colors = [UInt32](repeating: 0, count: count)
+        var depths = [Double](repeating: -.infinity, count: count)
+        // 颗粒种子按面颜色区分：同色的大平面颗粒连续；0 表示描边像素，不加颗粒。
+        var seeds = [UInt32](repeating: 0, count: count)
 
-        func write(_ x: Int, _ y: Int, _ depth: Double, _ color: UInt32) {
+        func write(_ x: Int, _ y: Int, _ depth: Double, _ color: UInt32, seed: UInt32) {
             guard x >= 0, y >= 0, x < width, y < height else { return }
             let index = y*width+x
             guard depth >= depths[index]-0.00001 else { return }
             depths[index] = depth
-            pixels[index*4] = UInt8((color>>16)&255)
-            pixels[index*4+1] = UInt8((color>>8)&255)
-            pixels[index*4+2] = UInt8(color&255)
-            pixels[index*4+3] = 255
+            colors[index] = color
+            seeds[index] = seed
         }
 
         for face in mesh.faces {
             let p = face.points.map(projection.project)
             let d = face.points.map(projection.depth)
             guard p.count >= 3 else { continue }
+            let seed = (face.color & 0xFFFFFF) | 0x0100_0000
             for i in 1..<(p.count-1) {
                 let a=p[0], b=p[i], c=p[i+1]
                 let denominator=(b.y-c.y)*(a.x-c.x)+(c.x-b.x)*(a.y-c.y)
@@ -214,12 +217,14 @@ nonisolated enum IsoRasterizer {
                         let v=((c.y-a.y)*(px-c.x)+(a.x-c.x)*(py-c.y))/denominator
                         let w=1-u-v
                         if min(u,v,w)>=(-0.00001) {
-                            write(x,y,u*d[0]+v*d[i]+w*d[i+1],face.color)
+                            write(x,y,u*d[0]+v*d[i]+w*d[i+1],face.color,seed:seed)
                         }
                     }
                 }
             }
             if let outline=face.outline {
+                // 描边只比面色暗一点，靠明暗分面表达形体，而不是卡通黑线。
+                let edge = IsoPixelStyle.mix(face.color, outline, IsoPixelStyle.outlineStrength)
                 for i in p.indices {
                     let j=(i+1)%p.count
                     let steps=max(1,Int(ceil(max(abs(p[j].x-p[i].x),abs(p[j].y-p[i].y)))))
@@ -227,13 +232,95 @@ nonisolated enum IsoRasterizer {
                         let t=Double(step)/Double(steps)
                         write(Int((p[i].x+(p[j].x-p[i].x)*t).rounded()),
                               Int((p[i].y+(p[j].y-p[i].y)*t).rounded()),
-                              d[i]+(d[j]-d[i])*t+0.04,outline)
+                              d[i]+(d[j]-d[i])*t+0.04,edge,seed:0)
                     }
                 }
             }
         }
-        let data=Data(pixels)
-        guard let provider=CGDataProvider(data:data as CFData) else { return nil }
+
+        // 第二步：逐像素套风格。亮度系数 = 凹角遮蔽 × 表面颗粒，再统一调色。
+        var pixels = [UInt8](repeating: 0, count: count*4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = y*width+x
+                guard depths[index] > -.infinity else { continue }
+                let occlusion = IsoPixelStyle.occlusionFactor(
+                    occlusionAmount(x, y, depths: depths, width: width, height: height,
+                                    scale: projection.scale), x, y)
+                let grain = seeds[index] == 0 ? 1 : IsoPixelStyle.grain(x, y, seed: seeds[index])
+                let (r,g,b) = IsoPixelStyle.grade(colors[index], occlusion*grain)
+                pixels[index*4] = r
+                pixels[index*4+1] = g
+                pixels[index*4+2] = b
+                pixels[index*4+3] = 255
+            }
+        }
+        return image(pixels, width: width, height: height)
+    }
+
+    /// 凹角遮蔽量（0~1）。取上下、左右、两条对角线上成对的邻居：
+    /// 平面上两侧深度一高一低，平均值等于自己；凹角（墙脚、家具与地面交界）两侧都更靠前，平均值偏高。
+    /// 凸角平均值偏低，不会变暗。差太多的视为前方的独立物体，不把后面的墙压黑。
+    private static func occlusionAmount(_ x: Int, _ y: Int, depths: [Double],
+                                        width: Int, height: Int, scale: Double) -> Double {
+        let center = depths[y*width+x]
+        let directions = [(1,0),(0,1),(1,1),(1,-1)]
+        var total = 0.0, samples = 0
+        for radius in IsoPixelStyle.occlusionRadii {
+            for (dx,dy) in directions {
+                let ax = x+dx*radius, ay = y+dy*radius, bx = x-dx*radius, by = y-dy*radius
+                guard ax >= 0, ay >= 0, bx >= 0, by >= 0,
+                      ax < width, ay < height, bx < width, by < height else { continue }
+                let a = depths[ay*width+ax], b = depths[by*width+bx]
+                guard a > -.infinity, b > -.infinity else { continue }
+                samples += 1
+                let deviation = (a+b)*0.5-center
+                guard deviation < IsoPixelStyle.occlusionRange else { continue }
+                // 换算成“每像素的弯折程度”，与画布缩放无关：直角墙脚约为 1.5。
+                let bend = deviation*scale/Double(radius)
+                total += min(1, max(0, bend-IsoPixelStyle.occlusionBias))
+            }
+        }
+        return samples == 0 ? 0 : total/Double(samples)
+    }
+
+    /// 地面软影单独成一张同尺寸透明图，垫在家具图下面：
+    /// 选中白边只根据家具本体生成，不会把影子也描进去。
+    static func groundShadow(_ mesh: IsoMesh, width: Int, height: Int, projection: IsoProjection) -> CGImage? {
+        let points = mesh.faces.flatMap(\.points)
+        guard let ground = points.map(\.z).min() else { return nil }
+        let base = points.filter { $0.z <= ground+IsoPixelStyle.shadowFootprintHeight }
+        guard let minX = base.map(\.x).min(), let maxX = base.map(\.x).max(),
+              let minY = base.map(\.y).min(), let maxY = base.map(\.y).max() else { return nil }
+        var pixels = [UInt8](repeating: 0, count: width*height*4)
+        let shadowColor = IsoPixelStyle.shadowColor
+        let s = projection.scale
+        for py in 0..<height {
+            for px in 0..<width {
+                // 屏幕点反投影到 z=ground 的地面上，得到世界坐标，再按占地矩形算远近。
+                let difference = (Double(px)+0.5-projection.origin.x)/s
+                let sum = 2*((Double(py)+0.5-projection.origin.y)/s+ground)
+                let wx = (sum+difference)*0.5-IsoPixelStyle.shadowOffsetX
+                let wy = (sum-difference)*0.5-IsoPixelStyle.shadowOffsetY
+                let distance = IsoPixelStyle.signedDistance(x:wx,y:wy,minX:minX,minY:minY,maxX:maxX,maxY:maxY)
+                // 离画布边越近越淡，到最外一圈完全透明。
+                let edge = Double(min(px, py, width-1-px, height-1-py))
+                let fade = min(1, edge/IsoPixelStyle.shadowEdgeFade)
+                let alpha = IsoPixelStyle.shadowAlpha(distance:distance,px,py)*fade
+                guard alpha > 0 else { continue }
+                // 画布是预乘透明度格式，颜色要先乘以 alpha。
+                let index = (py*width+px)*4
+                pixels[index] = UInt8((Double((shadowColor>>16)&255)*alpha).rounded())
+                pixels[index+1] = UInt8((Double((shadowColor>>8)&255)*alpha).rounded())
+                pixels[index+2] = UInt8((Double(shadowColor&255)*alpha).rounded())
+                pixels[index+3] = UInt8((255*alpha).rounded())
+            }
+        }
+        return image(pixels, width: width, height: height)
+    }
+
+    private static func image(_ pixels: [UInt8], width: Int, height: Int) -> CGImage? {
+        guard let provider=CGDataProvider(data:Data(pixels) as CFData) else { return nil }
         return CGImage(width:width,height:height,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:width*4,
                        space:CGColorSpaceCreateDeviceRGB(),
                        bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.premultipliedLast.rawValue),
