@@ -302,11 +302,14 @@ struct HomeDecorationView: View {
                 .position(x:p.x+model.sprite.midX*m.spriteFactor,y:p.y+model.sprite.midY*m.spriteFactor)
                 .gesture(isEditing && gridReady && mode == .furnish ? DragGesture(minimumDistance:6)
                     .onChanged { value in
-                        selectedContainerID=item.id.uuidString
-                        draggingContainerID=item.id.uuidString
                         let delta=m.delta(.init(width:value.translation.width/factor,height:value.translation.height/factor))
-                        candidate = .init(x:item.gridX+delta.x,y:item.gridY+delta.y)
-                        notice=placementIssue(cell:candidate!,model:model,layer:layer,id:item.id.uuidString,outdoors:HouseFurnitureCatalog.outdoors(id))
+                        let next=HouseCell(x:item.gridX+delta.x,y:item.gridY+delta.y)
+                        // 手指在同一格内移动不重新校验、刷新整屋或修改选择状态。
+                        guard draggingContainerID != item.id.uuidString || candidate != next else { return }
+                        if selectedContainerID != item.id.uuidString { selectedContainerID=item.id.uuidString }
+                        if draggingContainerID != item.id.uuidString { draggingContainerID=item.id.uuidString }
+                        candidate=next
+                        notice=placementIssue(cell:next,model:model,layer:layer,id:item.id.uuidString,outdoors:HouseFurnitureCatalog.outdoors(id))
                     }.onEnded { _ in
                         if let candidate { _=perform(.move(candidate),on:item) }
                         self.candidate=nil
@@ -333,10 +336,13 @@ struct HomeDecorationView: View {
                 .position(x:p.x+model.sprite.midX*m.spriteFactor,y:p.y+model.sprite.midY*m.spriteFactor)
                 .gesture(isEditing && gridReady && mode == .furnish ? DragGesture(minimumDistance:6)
                     .onChanged { value in
-                        selectedDecorationID=item.id;draggingDecorationID=item.id
                         let delta=m.delta(.init(width:value.translation.width/factor,height:value.translation.height/factor))
-                        candidate = .init(x:(item.gridX ?? 0)+delta.x,y:(item.gridY ?? 0)+delta.y)
-                        notice=placementIssue(cell:candidate!,model:model,layer:layer,id:item.id)
+                        let next=HouseCell(x:(item.gridX ?? 0)+delta.x,y:(item.gridY ?? 0)+delta.y)
+                        guard draggingDecorationID != item.id || candidate != next else { return }
+                        if selectedDecorationID != item.id { selectedDecorationID=item.id }
+                        if draggingDecorationID != item.id { draggingDecorationID=item.id }
+                        candidate=next
+                        notice=placementIssue(cell:next,model:model,layer:layer,id:item.id)
                     }.onEnded { _ in
                         if let candidate { _=performDecoration(.move(candidate),id:item.id) }
                         self.candidate=nil

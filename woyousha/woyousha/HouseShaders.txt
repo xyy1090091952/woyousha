@@ -1,0 +1,226 @@
+#include <metal_stdlib>
+using namespace metal;
+
+// Metal 源码资源：由后台渲染器首次加载时编译，复用编译结果。
+// 与 Swift 缓冲逐项对应。材质色阶和效果强度从 IsoPixelStyle 传入。
+struct HouseVertex {
+    float4 point, normal;
+    uint4 palette;
+    float4 grain, speck, details;
+    uint4 ids;
+};
+struct HouseUniforms {
+    float4 projection, viewport, object, shadow, lighting, occlusion, shadowTreatment;
+    uint4 radii, colors;
+    float4 preview;
+    uint4 state;
+};
+struct HouseVarying {
+    float4 position [[position]];
+    float3 world;
+    float depth;
+    float4 normal [[flat]];
+    uint4 palette [[flat]];
+    float4 grain [[flat]], speck [[flat]], details [[flat]];
+    uint4 ids [[flat]];
+    float owner [[flat]];
+};
+
+float4 houseProject(float3 p, constant HouseUniforms& u) {
+    float2 screen = u.projection.yz + float2(p.x-p.y,(p.x+p.y)*0.5-p.z)*u.projection.x;
+    float distance = (p.x+p.y+p.z-u.viewport.z)/u.viewport.w;
+    return float4(screen.x/u.viewport.x*2-1,1-screen.y/u.viewport.y*2,1-distance,1);
+}
+vertex HouseVarying houseVertex(uint id [[vertex_id]], device const HouseVertex* vertices [[buffer(0)]],
+                               constant HouseUniforms& u [[buffer(1)]]) {
+    HouseVertex v = vertices[id];
+    HouseVarying out;
+    out.world = v.point.xyz + u.object.xyz;
+    out.position = houseProject(out.world,u);
+    out.depth = out.world.x+out.world.y+out.world.z;
+    out.normal = v.normal;
+    out.palette = v.palette;
+    out.grain = v.grain;
+    out.speck = v.speck;
+    out.details = v.details;
+    out.details.xy += u.object.z;
+    out.ids = v.ids;
+    out.owner = u.object.w > 0 ? u.object.w:v.details.z;
+    return out;
+}
+float houseHash(int x,int y,uint seed) {
+    uint h = uint(x)*0x8DA6B343u;
+    h ^= uint(y)*0xD8163841u;
+    h ^= seed*0xCB1AB31Fu;
+    h ^= h>>13;
+    h *= 0x5BD1E995u;
+    h ^= h>>15;
+    return float(h & 0xffffu)/65535.0;
+}
+float houseNoise(float2 p,uint seed) {
+    int2 cell = int2(floor(p));
+    float2 f = fract(p);
+    float2 s = f*f*(3-2*f);
+    float a = houseHash(cell.x,cell.y,seed), b = houseHash(cell.x+1,cell.y,seed);
+    float c = houseHash(cell.x,cell.y+1,seed), d = houseHash(cell.x+1,cell.y+1,seed);
+    return mix(mix(a,b,s.x),mix(c,d,s.x),s.y);
+}
+float houseDither(int2 p) {
+    const float values[16] = {0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
+    return (values[(p.y & 3)*4+(p.x & 3)]+0.5)/16;
+}
+float3 houseRGB(uint c) { return float3((c>>16)&255,(c>>8)&255,c&255)/255; }
+float3 houseMix(float3 a,float3 b,float amount) {
+    // 软件路径每阶段都落到 8 位像素；这里也量化，避免换渲染方式后颜色漂移。
+    return floor(mix(a,b,amount)*255+0.5)/255;
+}
+struct HouseSurface {
+    float4 color [[color(0)]];
+    float4 metadata [[color(1)]];
+};
+fragment HouseSurface houseSurface(HouseVarying in [[stage_in]]) {
+    int2 pixel = int2(in.position.xy);
+    float localZ = in.world.z; // 家园模型当前均不消融；保留家具模型的消融支持。
+    if (in.details.y > -1e19 && localZ < in.details.y) {
+        float keep = max(0.0,(localZ-in.details.x)/max(0.001,in.details.y-in.details.x));
+        if (houseHash(pixel.x,pixel.y,in.ids.x)>keep) discard_fragment();
+    }
+    float2 uv;
+    if (abs(in.normal.z)>0.65) uv = in.normal.w>0 ? in.world.xy:in.world.yx;
+    else uv = float2(abs(in.normal.x)>abs(in.normal.y) ? in.world.y:in.world.x,in.world.z);
+    float value = 0.5;
+    if (in.grain.z>0) {
+        value += (houseNoise(uv*in.grain.xy,in.ids.x)-0.5)*in.grain.z;
+        if (in.speck.x>0) {
+            int2 cell = int2(floor(uv));
+            value += (houseHash(cell.x,cell.y,in.ids.x)-0.5)*in.speck.x;
+        }
+        if (in.speck.y>0) {
+            int2 cell = int2(floor(uv*in.speck.w));
+            if (houseHash(cell.x,cell.y,in.ids.x)>1-in.speck.y) value -= in.speck.z;
+        }
+        value = clamp(value,0.0,1.0);
+    }
+    int level = clamp(int(floor(value*float(in.ids.y)+(houseDither(pixel)-0.5)*in.grain.w)),0,int(in.ids.y)-1);
+    HouseSurface out;
+    out.color = float4(houseRGB(in.palette[level]),1);
+    out.metadata = float4(in.depth,dfdx(in.depth),dfdy(in.depth),in.owner);
+    return out;
+}
+
+struct HouseShadowVarying {
+    float4 position [[position]];
+    float value [[flat]];
+};
+vertex HouseShadowVarying houseShadowVertex(uint id [[vertex_id]],
+                                           device const HouseVertex* vertices [[buffer(0)]],
+                                           constant HouseUniforms& u [[buffer(1)]]) {
+    HouseVertex v = vertices[id];
+    float3 p = v.point.xyz+u.object.xyz;
+    float owner = u.object.w>0 ? u.object.w:v.details.z;
+    HouseShadowVarying out;
+    out.value = owner==1 || v.details.w+u.object.z<=0.3 ? 0:0.5;
+    if (u.state.w==1) {
+        out.value = owner!=1 && v.details.w+u.object.z>0.3
+            && v.details.w+u.object.z<=u.shadow.z ? 1:0;
+    } else p.xy += max(0.0,p.z)*u.shadow.xy;
+    p.z = 0;
+    out.position = houseProject(p,u);
+    return out;
+}
+fragment float houseShadow(HouseShadowVarying in [[stage_in]]) {
+    if (in.value==0) discard_fragment();
+    return in.value;
+}
+
+bool houseInside(int2 p,uint2 size) { return all(p>=0) && all(uint2(p)<size); }
+bool housePresent(float4 meta) { return meta.x > -1e19; }
+bool houseSelected(float4 meta,constant uint* flags,uint count) {
+    uint owner = uint(max(0.0,meta.w));
+    return housePresent(meta) && owner<count && (flags[owner]&1u)!=0;
+}
+kernel void houseFinish(texture2d<float,access::read> colors [[texture(0)]],
+                        texture2d<float,access::read> metadata [[texture(1)]],
+                        texture2d<float,access::read> shadows [[texture(2)]],
+                        texture2d<float,access::write> output [[texture(3)]],
+                        constant HouseUniforms& u [[buffer(0)]], constant uint* flags [[buffer(1)]],
+                        uint2 pixel [[thread_position_in_grid]]) {
+    uint2 size = uint2(output.get_width(),output.get_height());
+    if (any(pixel>=size)) return;
+    int2 p = int2(pixel);
+    float4 meta = metadata.read(pixel), color = colors.read(pixel);
+    const int2 directions[4] = {int2(1,0),int2(0,1),int2(1,1),int2(1,-1)};
+    if (housePresent(meta)) {
+        // 占地只修改露出的地面，墙、家具和地毯继续遵守原有深度关系。
+        if (u.state.x && meta.w==1) {
+            float q = (float(p.y)+0.5-u.projection.z)/u.projection.x;
+            float sum = (meta.x+q)*2.0/3.0;
+            float diff = (float(p.x)+0.5-u.projection.y)/u.projection.x;
+            float2 world = float2(sum+diff,sum-diff)*0.5;
+            if (all(world>=u.preview.xy+0.3) && all(world<u.preview.xy+u.preview.zw-0.3))
+                color.rgb = houseRGB(u.state.y ? u.colors.z:u.colors.w);
+        }
+        float total = 0;
+        int samples = 0;
+        for (uint r=0;r<u.radii.w;r++) {
+            int radius = int(u.radii[r]);
+            for (int d=0;d<4;d++) {
+                int2 a = p+directions[d]*radius, b = p-directions[d]*radius;
+                if (!houseInside(a,size) || !houseInside(b,size)) continue;
+                float4 ma = metadata.read(uint2(a)), mb = metadata.read(uint2(b));
+                if (!housePresent(ma) || !housePresent(mb)) continue;
+                samples++;
+                float deviation = (ma.x+mb.x)*0.5-meta.x;
+                if (deviation<u.occlusion.y) total += clamp(deviation*u.projection.x/float(radius)-u.occlusion.x,0.0,1.0);
+            }
+        }
+        float ao = floor((samples ? total/float(samples):0)*u.occlusion.z+0.5)/u.occlusion.z*u.lighting.w;
+        color.rgb = houseMix(color.rgb,houseRGB(u.colors.x),ao);
+        const int2 neighbors[4] = {int2(-1,0),int2(0,-1),int2(1,0),int2(0,1)};
+        float slopes[4] = {-meta.y,-meta.z,meta.y,meta.z};
+        bool boundary = false, rim = false, behind = false;
+        for (int k=0;k<4;k++) {
+            int2 n = p+neighbors[k];
+            if (!houseInside(n,size)) { boundary=true; continue; }
+            float4 other = metadata.read(uint2(n));
+            if (!housePresent(other)) { boundary=true; continue; }
+            float jump = (other.x-meta.x-slopes[k])*u.projection.x;
+            if (k<2 && jump < -u.lighting.x) rim=true;
+            if (k>=2 && jump > u.lighting.x) behind=true;
+        }
+        if (boundary || behind) color.rgb = houseMix(color.rgb,houseRGB(u.colors.x),u.lighting.y);
+        else if (rim) color.rgb = houseMix(color.rgb,houseRGB(u.colors.y),u.lighting.z);
+        uint owner = uint(max(0.0,meta.w));
+        float shadow = shadows.read(pixel).r;
+        if (owner<u.state.z && (flags[owner]&2u) && shadow>0) {
+            bool edge = false;
+            for (int k=0;k<4;k++) {
+                int2 n = p+neighbors[k];
+                if (!houseInside(n,size) || shadows.read(uint2(n)).r==0) edge=true;
+            }
+            int2 worldPixel = int2(floor(float2(p)+0.5-u.projection.yz));
+            if (!edge || houseDither(worldPixel)>=u.shadowTreatment.z) {
+                float alpha = shadow>0.75 ? u.shadowTreatment.y:u.shadowTreatment.x;
+                color.rgb = houseMix(color.rgb,houseRGB(u.colors.x),alpha);
+            }
+        }
+    }
+    // 白边只来自选中物体实际露出的像素；近处墙的深度更大时，会挡住白边。
+    if (u.state.w && !houseSelected(meta,flags,u.state.z)) {
+        int radius = int(u.occlusion.w);
+        bool outline = false;
+        for (int dy=-radius;dy<=radius && !outline;dy++) {
+            for (int dx=-radius;dx<=radius;dx++) {
+                if (dx*dx+dy*dy>radius*radius) continue;
+                int2 source = p+int2(dx,dy);
+                if (!houseInside(source,size)) continue;
+                float4 other = metadata.read(uint2(source));
+                if (!houseSelected(other,flags,u.state.z)) continue;
+                float border = other.x-float(dx)*other.y-float(dy)*other.z;
+                if (!housePresent(meta) || meta.x<=border+0.00001) { outline=true; break; }
+            }
+        }
+        if (outline) color=float4(1);
+    }
+    output.write(color,pixel);
+}

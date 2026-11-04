@@ -48,4 +48,20 @@ nonisolated struct HouseSceneItem: Hashable {
             return face
         })
     }
+
+    @MainActor func geometryBatch(style:String,owner:Int) -> HouseGeometryBatch? {
+        let limit=HouseGridConfig.plotSize*3
+        guard (-limit...limit).contains(cell.x),(-limit...limit).contains(cell.y) else { return nil }
+        let raw:IsoMesh
+        let key:String
+        switch source {
+        case .furniture(let id):
+            key="furniture:\(id):\(mirrored)"
+            raw=HouseFurnitureCatalog.furnitureMesh(id,mirrored:mirrored)
+        case .decoration(let kind):
+            key="decoration:\(kind):\(style):\(mirrored)"
+            raw=HouseFurnitureCatalog.decorationMesh(kind,style:style,mirrored:mirrored)
+        }
+        return .init(key:key,mesh:raw,origin:metrics.origin(at:cell,wall:layer == .wall),owner:owner)
+    }
 }

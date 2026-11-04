@@ -53,17 +53,37 @@ nonisolated struct HouseRenderJob: Sendable {
     let scene: IsoMesh
     let casters: IsoMesh
     let metrics: HouseSceneMetrics
-    let selectedOwners: Set<Int>
+    var selectedOwners: Set<Int>
     let shadowReceivers: Set<Int>
+    var geometry: [HouseGeometryBatch] = []
+    var baseKey: String = ""
+    var preview: HousePlacementPreview? = nil
 
     func render(cancellable: Bool = false) -> CGImage? {
         if cancellable && Task.isCancelled { return nil }
         let shadow=IsoShadowRenderer.render(casters,scale:metrics.projection.scale,groundPlane:0,
                                             cancellable:cancellable)
-        return IsoRasterizer.render(scene,width:metrics.width,height:metrics.height,projection:metrics.projection,
+        var visibleScene=scene
+        if let preview {
+            for cell in preview.footprint.cells(at:preview.cell) {
+                let index=visibleScene.faces.count,tile=HouseGridConfig.tile
+                visibleScene.top(Double(cell.x)*tile+0.3,Double(cell.y)*tile+0.3,0.22,tile-0.6,tile-0.6,
+                                 preview.isValid ? 0xBBD89A:0xE6AC9E,material:.smooth)
+                visibleScene.faces[index].renderOwner=1
+            }
+        }
+        return IsoRasterizer.render(visibleScene,width:metrics.width,height:metrics.height,projection:metrics.projection,
                                     selectedOwners:selectedOwners,shadow:shadow,shadowReceivers:shadowReceivers,
                                     cancellable:cancellable)
     }
+}
+
+/// GPU 保留本地模型缓冲，只传家具的新位置；房间和物品数据仍由原仓库管理。
+nonisolated struct HouseGeometryBatch: Sendable {
+    let key: String
+    let mesh: IsoMesh
+    var origin: IsoPoint = .init(0,0,0)
+    var owner: Int = 0
 }
 
 /// 原生像素庭院：草地、步道、围栏与树木。几何/颗粒绑定世界坐标，扩建时不会随机变换。
@@ -91,7 +111,7 @@ nonisolated enum HouseSceneRenderer {
                 if abs(x-pathX) <= 0 && y >= entrance.y+entrance.depth {
                     mesh.roundedBox(Double(x)*tile+1,Double(y)*tile+1,-0.5,tile-2,tile-2,1,
                                     radius:2,color:0xE9D9B3)
-                } else if !occupied.contains(cell) && IsoPixelStyle.hash(x,y,7)>0.965 {
+                } else if IsoPixelStyle.hash(x,y,7)>0.965 {
                     mesh.top(Double(x)*tile+6,Double(y)*tile+5,-0.7,3,2,0xEDCE89)
                 }
             }
@@ -182,33 +202,42 @@ nonisolated enum HouseSceneRenderer {
     @MainActor static func prepare(layout: HouseLayout, metrics: HouseSceneMetrics, style: String,
                        occupants: [HouseOccupant] = [],items:[HouseSceneItem] = [],
                        selectedIDs:Set<String> = [],preview:HousePlacementPreview? = nil) -> HouseRenderJob {
-        var scene=model(layout:layout,metrics:metrics,style:style,occupants:occupants)
-        for i in scene.faces.indices {
-            let points=scene.faces[i].points
-            if let z=points.first?.z,z <= 0.3,points.allSatisfy({abs($0.z-z)<0.001}) {
-                scene.faces[i].renderOwner=1
-            }
+        let architectureKey=HouseGeometryCache.key(layout:layout,metrics:metrics,style:style,occupants:occupants)
+        let objects=items.map {"\($0.id):\($0.source):\($0.cell.x):\($0.cell.y):\($0.mirrored)"}.joined(separator:"|")
+        let baseKey=architectureKey+objects+"\(metrics.width),\(metrics.height),\(metrics.projection.origin)"
+        let selection=Set(items.enumerated().compactMap { selectedIDs.contains($0.element.id) ? $0.offset+2:nil })
+        if var cached=HousePreparedSceneCache.job(for:baseKey) {
+            cached.selectedOwners=selection
+            cached.preview=preview
+            return cached
         }
-        if let preview {
-            for cell in preview.footprint.cells(at:preview.cell) {
-                let index=scene.faces.count,tile=HouseGridConfig.tile
-                scene.top(Double(cell.x)*tile+0.3,Double(cell.y)*tile+0.3,0.22,tile-0.6,tile-0.6,
-                          preview.isValid ? 0xBBD89A:0xE6AC9E,material:.smooth)
-                scene.faces[index].renderOwner=1
+        let architecture=HouseGeometryCache.mesh(for:architectureKey) {
+            var mesh=model(layout:layout,metrics:metrics,style:style,occupants:occupants)
+            for i in mesh.faces.indices {
+                let points=mesh.faces[i].points
+                if let z=points.first?.z,z <= 0.3,points.allSatisfy({abs($0.z-z)<0.001}) {
+                    mesh.faces[i].renderOwner=1
+                }
             }
+            return mesh
         }
-        var receivers=Set([1]),selection=Set<Int>()
+        var scene=architecture
+        var geometry=[HouseGeometryBatch(key:architectureKey,mesh:architecture)]
+        var receivers=Set([1])
         for (index,item) in items.enumerated() {
             let owner=index+2
             scene.merge(item.worldMesh(style:style,owner:owner))
+            if let batch=item.geometryBatch(style:style,owner:owner) { geometry.append(batch) }
             if item.layer == .covering { receivers.insert(owner) }
-            if selectedIDs.contains(item.id) { selection.insert(owner) }
         }
         let casters=IsoMesh(faces:scene.faces.filter {
             !receivers.contains($0.renderOwner) && $0.points.contains(where:{$0.z > 0.3})
         })
-        return HouseRenderJob(scene:scene,casters:casters,metrics:metrics,
-                              selectedOwners:selection,shadowReceivers:receivers)
+        let job=HouseRenderJob(scene:scene,casters:casters,metrics:metrics,
+                              selectedOwners:selection,shadowReceivers:receivers,geometry:geometry,
+                              baseKey:baseKey,preview:preview)
+        HousePreparedSceneCache.insert(job)
+        return job
     }
 
     /// 同步入口供静态预览和核验使用；正式页面通过不可变任务在后台绘图。
@@ -217,5 +246,35 @@ nonisolated enum HouseSceneRenderer {
                        selectedIDs:Set<String> = [],preview:HousePlacementPreview? = nil) -> CGImage? {
         prepare(layout:layout,metrics:metrics,style:style,occupants:occupants,
                 items:items,selectedIDs:selectedIDs,preview:preview).render()
+    }
+}
+
+@MainActor private enum HousePreparedSceneCache {
+    private static var entries:[HouseRenderJob]=[]
+    static func job(for key:String) -> HouseRenderJob? { entries.first {$0.baseKey == key} }
+    static func insert(_ job:HouseRenderJob) {
+        entries.append(job)
+        if entries.count>3 { entries.removeFirst() }
+    }
+}
+
+/// 建筑只有房型、装修、取景或树木遮挡变化才重建；换选中家具复用同一个模型。
+@MainActor private enum HouseGeometryCache {
+    private static var entries: [(String,IsoMesh)] = []
+    static func key(layout:HouseLayout,metrics:HouseSceneMetrics,style:String,occupants:[HouseOccupant]) -> String {
+        let rooms=layout.rooms.map {
+            "\($0.id):\($0.kind):\($0.x):\($0.y):\($0.width):\($0.depth):\($0.floorFinish?.rawValue ?? ""):\($0.wallFinish?.rawValue ?? "")"
+        }.joined(separator:"|")
+        let occupied=occupants.reduce(into:Set<HouseCell>()) {$0.formUnion($1.cells)}
+        let trees=[HouseCell(x:1,y:5),.init(x:3,y:1),.init(x:18,y:2),.init(x:20,y:16),.init(x:5,y:20)]
+            .map { HouseFootprint(width:2,depth:2).cells(at:$0).isDisjoint(with:occupied) ? "1":"0" }.joined()
+        return "yard:\(style):\(rooms):\(trees):\(metrics.minX),\(metrics.minY),\(metrics.maxX),\(metrics.maxY)"
+    }
+    static func mesh(for key:String,create:() -> IsoMesh) -> IsoMesh {
+        if let entry=entries.first(where:{$0.0 == key}) { return entry.1 }
+        let mesh=create()
+        entries.append((key,mesh))
+        if entries.count>3 { entries.removeFirst() }
+        return mesh
     }
 }

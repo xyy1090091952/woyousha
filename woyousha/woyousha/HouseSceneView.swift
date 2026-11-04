@@ -51,7 +51,7 @@ struct HouseSceneView: View {
             }
             let job=HouseSceneRenderer.prepare(layout:layout,metrics:metrics,style:style,occupants:occupants,
                                                items:items,selectedIDs:selectedIDs,preview:preview)
-            let worker=Task.detached(priority:.userInitiated) { job.render(cancellable:true) }
+            let worker=Task.detached(priority:.userInitiated) { await HouseSceneRenderService.shared.render(job) }
             let image=await withTaskCancellationHandler {
                 await worker.value
             } onCancel: {

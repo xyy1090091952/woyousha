@@ -104,11 +104,9 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showAddSheet) {
-                // 如果当前选中的是具体容器，则默认选中该容器
-                if case .specific(let container) = selectedFilter {
-                    AddItemView(defaultContainer: container)
-                } else {
-                    AddItemView()
+                AddItemView {
+                    // 从任意 tab 新建都进入未分类，并切过去让刚添加的物品立即可见。
+                    selectedFilter = .unclassified
                 }
             }
             .sheet(isPresented: $showAddContainerSheet) {

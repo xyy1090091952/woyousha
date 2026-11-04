@@ -26,9 +26,9 @@ final class ItemEditorModel {
     @ObservationIgnored private var previousPhotoState: PhotoState = .empty
     @ObservationIgnored private var imageChanged = false
 
-    init(item: Item?, defaultContainer: Container?) {
+    init(item: Item?) {
         self.item = item
-        draft = ItemDraft(item: item, defaultContainer: defaultContainer)
+        draft = ItemDraft(item: item)
         image = item?.imageData.flatMap(UIImage.init(data:))
         lastPhotoPerformance = PhotoPerformanceStore.load()
         if image != nil { photoState = .ready }
