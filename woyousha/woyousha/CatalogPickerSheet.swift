@@ -56,6 +56,7 @@ struct CatalogPickerSheet<Entry: Identifiable, Tab: CatalogTab, Thumbnail: View>
     let dismissOnSelection: Bool
     let thumbnail: (Entry) -> Thumbnail
     let onSelect: (Entry) -> Bool
+    let failureMessage: () -> String
     @State private var query: CatalogQuery<Tab>
     @State private var selectionFailed = false
 
@@ -65,6 +66,7 @@ struct CatalogPickerSheet<Entry: Identifiable, Tab: CatalogTab, Thumbnail: View>
          searchTextOf: @escaping (Entry) -> String,
          isSelected: @escaping (Entry) -> Bool = { _ in false },
          dismissOnSelection: Bool = false,
+         failureMessage: @escaping () -> String = { "请再试一次。" },
          @ViewBuilder thumbnail: @escaping (Entry) -> Thumbnail,
          onSelect: @escaping (Entry) -> Bool) {
         self.title = title
@@ -78,6 +80,7 @@ struct CatalogPickerSheet<Entry: Identifiable, Tab: CatalogTab, Thumbnail: View>
         self.dismissOnSelection = dismissOnSelection
         self.thumbnail = thumbnail
         self.onSelect = onSelect
+        self.failureMessage = failureMessage
         _query = State(initialValue: initialQuery)
     }
 
@@ -125,7 +128,7 @@ struct CatalogPickerSheet<Entry: Identifiable, Tab: CatalogTab, Thumbnail: View>
             .alert("没有保存成功", isPresented: $selectionFailed) {
                 Button("知道了", role: .cancel) {}
             } message: {
-                Text("请再试一次。")
+                Text(failureMessage())
             }
         }
         .tint(AppTheme.accentText)

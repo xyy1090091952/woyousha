@@ -10,8 +10,11 @@ nonisolated struct RoomDecoration: Identifiable, Codable, Equatable {
     var scale: Double = 1
     var isMirrored = false
     var zIndex: Int = 0
-    // 保留此旧字段以读取历史 JSON。新版本只保存正在房间里的装饰。
+    // 收起后保留在待布置区，下一次可以放回房间。
     var isPlaced = true
+    // Optional 可以读取没有格子字段的旧 JSON，首次升级再安全对齐。
+    var gridX: Int? = nil
+    var gridY: Int? = nil
     var name: String { kind.title }
 
     enum Kind: String, Codable, CaseIterable {

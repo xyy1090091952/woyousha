@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oyoha · 把小屋拼成自己的家</title>
+<style>
+:root{--bg:#fffbf5;--paper:#fff;--ink:#513a2c;--muted:#886d5b;--gold:#edba79;--line:#ead8c4;--green:#4f7654;--red:#b7473d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+a{color:#895329}button,input,select{font:inherit}button{cursor:pointer;border:1px solid var(--line);border-radius:12px;background:#fff5e5;color:var(--ink);padding:9px 14px;min-height:44px}button:hover{background:#f7dfbc}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--green);outline-offset:3px}button:disabled{opacity:.45;cursor:default}.primary{background:var(--gold);font-weight:650}
+header,main,footer{max-width:1020px;margin:auto;padding:0 32px}header{padding-top:72px;padding-bottom:38px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:2px;color:var(--muted)}h1{font-size:clamp(30px,4vw,48px);line-height:1.2;letter-spacing:-1px;margin:20px 0}header p{max-width:720px;font-size:18px}
+nav{display:flex;flex-wrap:wrap;gap:18px;font-size:14px;margin-top:28px}section{padding:36px 0;border-bottom:1px solid var(--line)}h2{font-size:25px;margin:0 0 18px}h3{font-size:18px;margin:24px 0 8px}p{margin:10px 0}.muted,small{color:var(--muted)}.id{color:#a36c3e;font-size:12px;font-weight:700;letter-spacing:1px;display:block}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{text-align:left;padding:12px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#f8eddb;font-weight:600}
+.judgment{border-left:3px solid var(--gold);padding-left:16px;color:var(--muted);font-size:14px}.flow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:20px 0}.flow span{background:#f8eddb;border-radius:8px;padding:8px 12px}
+.demo{padding:24px;background:var(--paper);border:1px solid var(--line);border-radius:20px;margin-top:24px}.demohead{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.tabs{display:flex;gap:6px;background:#f8efdf;padding:4px;border-radius:14px}.tabs button{border:0;background:transparent}.tabs button[aria-pressed=true]{background:var(--gold)}
+.demo-grid{display:grid;grid-template-columns:minmax(260px,1.15fr) minmax(260px,1fr);gap:28px;align-items:start}
+#map{display:block;width:100%;height:auto;touch-action:manipulation;border-radius:10px;background:#eff3df}
+.panel p{font-size:14px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.field{display:flex;align-items:center;gap:10px;margin:10px 0}.field input,.field select{width:120px;padding:5px 8px;border:1px solid var(--line);border-radius:8px}.field input[type=number]{width:76px}
+#feedback{border-left:3px solid var(--green);padding:10px 14px;background:#f3f7ee;margin-top:14px;font-size:14px;min-height:66px}#feedback.error{border-color:var(--red);background:#fff2ef;color:var(--red)}
+.legend{font-size:12px;display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}.note{font-size:12px;color:var(--muted)}footer{font-size:12px;padding-top:24px;padding-bottom:40px}
+@media(max-width:720px){header,main,footer{padding-left:20px;padding-right:20px}header{padding-top:40px}.demo{padding:16px}.demo-grid{grid-template-columns:1fr}table{display:block;overflow-x:auto}h2{font-size:22px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<header>
+<div class="eyebrow">OYOHA / 家园装修玩法 / 2026.11.04</div>
+<h1>把小屋拼成自己的家</h1>
+<p>从一个客厅开始，在庭院里扩建卧室、厨房和书房。家具按格子落位，装修成为可以反复调整、持续保存的家园玩法。</p>
+<nav aria-label="文档导航"><a href="#contract">玩法目标</a><a href="#scene">场景</a><a href="#build">建房</a><a href="#furnish">布置</a><a href="#recovery">保存与恢复</a><a href="#demo">动手试试</a></nav>
+</header>
+<main>
+<section id="contract">
+<span class="id">产品约定</span><h2>装修的结果，是自己的户型和布置</h2>
+<p>用户提出：去掉非品牌小盒子图案，补充屋外场景，允许自己扩建成三室一厅，家具使用固定大小和格子摆放，整体装修像游戏一样。上述五项是本次功能范围的依据。</p>
+<p>使用者是正在整理物品和布置家的 App 用户。首页进入“打造我的家”后，切换“建房”或“布置”。成功操作会显示保存提示；再次打开，房间、家具和装饰保持一致。家具仍是收纳容器，移动或收起家具不会改变其中的物品。</p>
+<div class="flow" aria-label="装修流程"><span>首页进入</span>→<span>建房扩建</span>→<span>选家具</span>→<span>按格布置</span>→<span>保存后查看</span></div>
+<p class="judgment"><b>首版产品判断：</b>采用 24 × 24 格宅地，默认客厅 8 × 8 格，每个房间长宽为 3～12 格。它给扩建留出空间，同时让手机上的格子能清楚辨认。首版房间是矩形，家具提供两个等轴朝向。范围和数量是本次实现判断，未经过用户研究验证。</p>
+<p class="muted">本次覆盖自由装修的完整过程。金币、解锁、任务奖励和好友访问尚未定义，首版直接允许选择目录里的家具与装饰。</p>
+</section>
+<section id="scene">
+<span class="id">FR-01</span><h2>庭院与家的视角</h2>
+<p>首页和装修页展示同一个家。去掉左上角的小盒子图案，保留现有品牌按钮配色。屋外由草地、石路、树木和远侧围栏组成；树木所在的区域建成房间或放入家具后，树木让出空间。</p>
+<p>阳光木屋使用奶油杏墙、橘金木地板；森林小屋使用绿墙和自然木色。切换风格只影响配色，房型和家具位置保持。房间用途会区分地板颜色。</p>
+<p>“建房”展示整个宅地，便于选择扩建位置；“布置”围绕当前房间和已摆放的庭院物品取景。两指缩放改变视角，家具实际占地保持。点“查看整个家”恢复视角。网格按钮可以显示或隐藏辅助格子，摆放规则持续生效。</p>
+<p class="note">庭院是场景背景，首版没有单独的地形编辑器。户外分类的家具可以摆在庭院空格，室内家具要完整放进房间。</p>
+</section>
+<section id="build">
+<span class="id">FR-02</span><h2>建房：把房间拼起来</h2>
+<p>切换“建房”，点击“扩建一个房间”，出现新房草稿和编辑面板。草稿优先出现在可连接的空地。拖动草稿调整位置，再修改名称、用途、宽和深。合法草稿为绿色，非法草稿为红色并显示原因；只有通过校验才能确认扩建。</p>
+<table><thead><tr><th>字段</th><th>初始值与编辑规则</th><th>保存校验</th></tr></thead><tbody>
+<tr><td>名称</td><td>默认“卧室”，可修改</td><td>不能为空，最多 12 字</td></tr>
+<tr><td>用途</td><td>客厅、卧室、厨房、浴室、书房</td><td>从用途列表选择</td></tr>
+<tr><td>宽 / 深</td><td>新房默认 5 × 5 格</td><td>整数，分别为 3～12 格</td></tr>
+<tr><td>位置</td><td>拖动草稿，按格移动</td><td>完整位于宅地内，不重叠，整屋连通</td></tr>
+</tbody></table>
+<p>房间至少共用两格墙面才相连。相邻房间自动开两格宽的门洞，并在门洞两侧各保留一格深的通道。新房产生的通道被家具挡住时，先移开家具再扩建。</p>
+<p>点已保存房间的名称可重新编辑。改小房间不能裁掉家具或装饰，改动后挂墙物品仍需靠后墙。整个移动已摆物品的房间前，要先把该房间清空。拆房只能拆空房，至少保留一间，且拆除后其他房间仍需连通。</p>
+<p>草稿只在确认保存后生效。“取消”、切换模式或返回会放弃未保存的草稿。点“完成”会先尝试保存当前草稿；草稿不合法时留在页面并说明原因，用户可修改或取消。</p>
+</section>
+<section id="furnish">
+<span class="id">FR-03</span><h2>布置：拿起、落格、转向</h2>
+<p>“布置”底部提供家具 / 装饰切换和待布置区。点击添加打开现有分类与搜索目录；选中的物品自动找到附近可用空格。放不下时保留目录并说明空间不足，用户可以换小件、收起家具或扩建。</p>
+<p>点击场景中的物品选中，显示白色轮廓、占地格和固定操作面板。拖动时只预览目标格；绿色表示可放，红色表示不可放。松手后合法位置自动保存，不合法则回到原位置。“左 / 上 / 下 / 右一格”适合微调。</p>
+<p>“转向”切换两个朝向，同时更新占地校验。家具不能因转向挤进其他物品或越过房间边缘。换造型也要校验新的占地，失败时原造型保持，并说明原因。大小固定，显示前后关系自动决定。</p>
+<table><thead><tr><th>物品类型</th><th>可摆位置</th><th>与其他物品的关系</th></tr></thead><tbody>
+<tr><td>普通家具 / 落地装饰</td><td>完整位于同一房间；户外家具也可完整位于庭院</td><td>同层不能重叠，不能占门洞通道</td></tr>
+<tr><td>挂墙家具 / 墙面装饰</td><td>完整位于房间，起始格靠任一后侧墙</td><td>墙面层之间不能重叠，不能占门洞通道</td></tr>
+<tr><td>地毯</td><td>完整位于同一房间</td><td>可在家具下方，可铺通道；两张地毯不重叠</td></tr>
+</tbody></table>
+<p>“收起”把物品放进待布置区，记录继续保留。点击待布置物品会重新寻找可用空格，找不到则继续待布置。装饰提供删除；删除后记录消失，家具面板仅提供收起。没有待布置物品时，添加入口仍然可用。</p>
+<p class="judgment"><b>首版产品判断：</b>占地按家具模型长宽向上取整，物品之间采用格子碰撞。同一格可分别容纳地毯、落地层和墙面层。首版小摆件放在地面，尚未提供放上桌面或架子的操作。</p>
+</section>
+<section id="demo">
+<span class="id">FR-01 / FR-02 / FR-03 · 可点击规则演示</span><h2>先试着扩一间卧室</h2>
+<p>下面用俯视格子图帮助看清规则，正式 App 使用等轴像素画面。可切换模式、移动物品、保存或取消房间草稿；这些操作只在演示中生效。</p>
+<div class="demo">
+<div class="demohead"><strong>我的户型 <span id="count">1</span> 间</strong><div class="tabs" aria-label="演示模式"><button id="furnishTab" aria-pressed="true" onclick="changeMode('furnish')">布置</button><button id="buildTab" aria-pressed="false" onclick="changeMode('build')">建房</button></div></div>
+<div class="demo-grid">
+<div>
+<svg id="map" viewBox="0 0 480 480" role="img" aria-label="24乘24格宅地，点击选择房间或指定摆放格子"></svg>
+<div class="legend"><span><i style="background:#bacd8b"></i>庭院</span><span><i style="background:#e5ad70"></i>房间</span><span><i style="background:#93b79a"></i>门洞通道</span><span><i style="background:#579991"></i>家具</span></div>
+<div class="actions"><button onclick="toggleGrid()">显示 / 隐藏格子</button><button onclick="changeStyle()">切换配色</button></div>
+<p class="note">坐标从左上角开始。方向按钮在示意图中移动一格，手机中沿等轴方向移动。</p>
+</div>
+<div class="panel">
+<div id="furnishPanel">
+<strong>沙发 · <span id="size">3 × 2</span> 格</strong>
+<p>点击空格尝试摆放沙发。点击客厅以外的格子，可以查看跨墙拦截。</p>
+<div class="actions"><button onclick="nudge(-1,0)">左一格</button><button onclick="nudge(0,-1)">上一格</button><button onclick="nudge(0,1)">下一格</button><button onclick="nudge(1,0)">右一格</button></div>
+<div class="actions"><button onclick="rotateItem()">转向</button><button onclick="storeItem()">收起</button><button onclick="replaceItem()" id="warehouse" disabled>放回房间</button></div>
+<p class="note">示意沙发为 3 × 2 格。收起后仍保留“沙发里的书 · 7 本”，放回时自动找空格。</p>
+</div>
+<div id="buildPanel" hidden>
+<div class="actions"><button class="primary" onclick="newRoom()">扩建一个房间</button><button onclick="threeRooms()">查看三室一厅</button></div>
+<div id="draftFields" hidden>
+<label class="field">名称 <input id="roomName" maxlength="12" oninput="updateDraft()" value="卧室"></label>
+<label class="field">用途 <select id="roomKind" onchange="updateDraft()"><option value="bedroom">卧室</option><option value="living">客厅</option><option value="kitchen">厨房</option><option value="bathroom">浴室</option><option value="study">书房</option></select></label>
+<label class="field">宽 / 深 <input id="roomWidth" type="number" min="3" max="12" value="5" oninput="updateDraft()"><input id="roomDepth" type="number" min="3" max="12" value="5" oninput="updateDraft()"></label>
+<div class="actions"><button onclick="moveDraft(-1,0)">左</button><button onclick="moveDraft(0,-1)">上</button><button onclick="moveDraft(0,1)">下</button><button onclick="moveDraft(1,0)">右</button></div>
+<div class="actions"><button class="primary" id="confirm" onclick="confirmRoom()">保存房间</button><button onclick="cancelDraft()">取消</button><button id="deleteRoom" onclick="removeRoom()">拆除空房</button></div>
+<p class="note">点击宅地更改草稿位置，点击已保存房间可编辑。草稿红色时不能保存。</p>
+</div>
+</div>
+<div id="feedback" role="status" aria-live="polite">沙发已放在客厅。试着移动或转向。</div>
+<div class="actions"><button onclick="resetDemo()">重置演示</button></div>
+</div>
+</div>
+</div>
+</section>
+<section id="recovery">
+<span class="id">FR-04</span><h2>保存、旧布局与异常恢复</h2>
+<p>房型确认、家具落格、转向、换造型和收起，成功后显示保存提示。失败不发布新的有效状态；用户可调整当前条件再试。进入时存档读不出来，会保留原存档并停止修改，显示提示。</p>
+<p>旧版自由摆放首次进入会对齐附近的合法空格，保留旧位置备份。原物品名称、数量、家具归属不变。空间不足的家具或装饰收进待布置区，并显示收起的数量。再次打开只读取已完成的格子位置，不反复改变布置。</p>
+<table><thead><tr><th>情况</th><th>画面反馈</th><th>下一步</th></tr></thead><tbody>
+<tr><td>重叠 / 越界 / 跨墙</td><td>候选格红色，保存失败保持旧位置</td><td>移到房间内空格</td></tr>
+<tr><td>扩建会堵门</td><td>提示先移动挡门物品</td><td>取消草稿，布置移开家具，再扩建</td></tr>
+<tr><td>房间不连通</td><td>提示至少共用两格墙面</td><td>让新房贴住已有房间</td></tr>
+<tr><td>没有足够空格</td><td>添加失败或保留待布置状态</td><td>扩建、收起其他物品、选择较小家具</td></tr>
+<tr><td>迁移准备未完成</td><td>说明未完成，装修操作停止</td><td>重新进入后重试已完成之外的部分</td></tr>
+<tr><td>存档无法读取</td><td>提示原存档已保留</td><td>重新打开再试，持续异常需要排查存档</td></tr>
+</tbody></table>
+</section>
+</main>
+<footer>依据：用户本次五项装修要求与既有 Oyoha 配色约定。首版范围和规则已明确标注产品判断。演示与手机数据互不影响。</footer>
+<script>
+// 俯视演示只表达产品规则，不连接 App 或任何外部服务。
+const S=20,N=24,initialRoom={id:'living',name:'客厅',kind:'living',x:4,y:4,w:8,d:8};
+let rooms,sofa,draft,mode='furnish',showGrid=true,forest=false;
+const byId=id=>document.getElementById(id);
+const covers=(r,p)=>p.x>=r.x&&p.y>=r.y&&p.x+p.w<=r.x+r.w&&p.y+p.d<=r.y+r.d;
+const overlaps=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.d&&a.y+a.d>b.y;
+function doors(list){
+ const out=[];
+ for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
+  const a=list[i],b=list[j],y0=Math.max(a.y,b.y),y1=Math.min(a.y+a.d,b.y+b.d),x0=Math.max(a.x,b.x),x1=Math.min(a.x+a.w,b.x+b.w);
+  if(y1-y0>=2&&(a.x+a.w===b.x||b.x+b.w===a.x))out.push({a:a.id,b:b.id,x:Math.max(a.x,b.x)-1,y:y0+Math.floor((y1-y0-2)/2),w:2,d:2});
+  if(x1-x0>=2&&(a.y+a.d===b.y||b.y+b.d===a.y))out.push({a:a.id,b:b.id,x:x0+Math.floor((x1-x0-2)/2),y:Math.max(a.y,b.y)-1,w:2,d:2});
+ }
+ return out;
+}
+function roomIssue(list){
+ for(const r of list){if(!r.name.trim()||r.name.length>12)return '房间名称不能为空，最多 12 字。';if(!Number.isInteger(r.w)||!Number.isInteger(r.d)||r.w<3||r.d<3||r.w>12||r.d>12||r.x<0||r.y<0||r.x+r.w>N||r.y+r.d>N)return '房间要在宅地内，长和宽为 3～12 格。';}
+ for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++)if(overlaps(list[i],list[j]))return '房间重叠了，请移到空地上。';
+ const links=doors(list),seen=new Set([list[0].id]);let changed=true;
+ while(changed){changed=false;for(const link of links)if(seen.has(link.a)||seen.has(link.b)){const n=seen.size;seen.add(link.a);seen.add(link.b);if(n!==seen.size)changed=true;}}
+ if(seen.size!==list.length)return '房间要贴着已有房间，至少共用两格墙面。';
+ if(sofa?.placed){if(!list.some(r=>covers(r,sofa)))return '先移走房间里的家具，再修改房型。';if(links.some(p=>overlaps(p,sofa)))return '门口要留出通道，先移开挡门家具。';}
+ return '';
+}
+function proposed(){return rooms.some(r=>r.id===draft.id)?rooms.map(r=>r.id===draft.id?draft:r):rooms.concat(draft);}
+function draftIssue(){const old=rooms.find(r=>r.id===draft.id);if(old&&sofa.placed&&covers(old,sofa)&&(old.x!==draft.x||old.y!==draft.y))return '先收起房间里的家具，再移动整个房间。';return roomIssue(proposed());}
+function furnitureIssue(p){if(!rooms.some(r=>covers(r,p)))return '家具要完整放在同一个房间里，不能跨墙或摆出地板。';if(doors(rooms).some(d=>overlaps(d,p)))return '门口要留出通道。';return '';}
+function say(message,error=false){byId('feedback').textContent=message;byId('feedback').classList.toggle('error',error);}
+function svgRect(r,fill,stroke='',dash=''){return `<rect x="${r.x*S+1}" y="${r.y*S+1}" width="${r.w*S-2}" height="${r.d*S-2}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-dasharray="${dash}"/>`;}
+function paint(){
+ let out=`<rect width="480" height="480" fill="${forest?'#a5ba75':'#bacd8b'}"/>`;
+ for(const r of rooms){out+=svgRect(r,forest?'#c5a475':r.kind==='bedroom'?'#debd8b':'#e5ad70','#9c7654');out+=`<text x="${(r.x+r.w/2)*S}" y="${(r.y+r.d/2)*S}" text-anchor="middle" fill="#64482f" font-size="14">${r.name.replace(/[<>&"]/g,'')}</text>`;}
+ for(const d of doors(rooms))out+=svgRect(d,'#93b79a');
+ if(showGrid)for(let i=1;i<N;i++)out+=`<path d="M${i*S} 0V480M0 ${i*S}H480" stroke="#ffffff" opacity=".32" stroke-width=".7"/>`;
+ if(sofa.placed){out+=svgRect(sofa,'#579991','#ffffff');out+=`<text x="${(sofa.x+sofa.w/2)*S}" y="${(sofa.y+sofa.d/2)*S+4}" text-anchor="middle" fill="white" font-size="12">沙发</text>`;}
+ if(draft){const err=draftIssue();out+=svgRect(draft,err?'#e97b7055':'#67ac6755',err?'#b7473d':'#4f7654','5 3');byId('confirm').disabled=!!err;}
+ byId('map').innerHTML=out;byId('count').textContent=rooms.length;byId('size').textContent=`${sofa.w} × ${sofa.d}`;byId('warehouse').disabled=sofa.placed;
+}
+function changeMode(next){mode=next;draft=null;byId('furnishTab').setAttribute('aria-pressed',next==='furnish');byId('buildTab').setAttribute('aria-pressed',next==='build');byId('furnishPanel').hidden=next!=='furnish';byId('buildPanel').hidden=next!=='build';byId('draftFields').hidden=true;say(next==='build'?'点击扩建，或点已有房间编辑。':'点击空格移动沙发。');paint();}
+function tryMove(p){const err=furnitureIssue(p);if(err){say(err+' 原位置保持。',true);return;}sofa={...p,placed:true};say('已落格并保存。');paint();}
+function nudge(dx,dy){if(!sofa.placed){say('沙发在待布置区，先放回房间。',true);return;}tryMove({...sofa,x:sofa.x+dx,y:sofa.y+dy});}
+function rotateItem(){if(!sofa.placed){say('先把沙发放回房间。',true);return;}tryMove({...sofa,w:sofa.d,d:sofa.w});}
+function storeItem(){sofa.placed=false;say('沙发已收起，沙发里的书 · 7 本继续保留。');paint();}
+function replaceItem(){const choices=[];for(let y=0;y<N;y++)for(let x=0;x<N;x++)choices.push({...sofa,x,y});choices.sort((a,b)=>(Math.abs(a.x-5)+Math.abs(a.y-5))-(Math.abs(b.x-5)+Math.abs(b.y-5))||a.y-b.y||a.x-b.x);const point=choices.find(p=>!furnitureIssue(p));if(point)tryMove(point);else say('没有足够空格，沙发继续留在待布置区。',true);}
+function fields(){byId('draftFields').hidden=false;byId('roomName').value=draft.name;byId('roomKind').value=draft.kind;byId('roomWidth').value=draft.w;byId('roomDepth').value=draft.d;byId('deleteRoom').hidden=!rooms.some(r=>r.id===draft.id);paint();const err=draftIssue();say(err||'绿色草稿可保存；点击宅地可以挪动。',!!err);}
+function newRoom(){draft={id:'room-'+Date.now(),name:'卧室',kind:'bedroom',x:12,y:4,w:5,d:5};outer:for(let y=0;y<N;y++)for(let x=0;x<N;x++){draft.x=x;draft.y=y;if(!draftIssue())break outer;}fields();}
+function updateDraft(){if(!draft)return;draft={...draft,name:byId('roomName').value,kind:byId('roomKind').value,w:Number(byId('roomWidth').value),d:Number(byId('roomDepth').value)};paint();const err=draftIssue();say(err||'草稿可保存。',!!err);}
+function moveDraft(dx,dy){if(!draft)return;draft.x+=dx;draft.y+=dy;fields();}
+function confirmRoom(){if(!draft)return;const err=draftIssue();if(err){say(err,true);return;}rooms=proposed();draft=null;byId('draftFields').hidden=true;say('房间已保存，相邻门洞已连接。');paint();}
+function cancelDraft(){draft=null;byId('draftFields').hidden=true;say('草稿已取消，已保存的家保持。');paint();}
+function removeRoom(){if(!draft)return;const old=rooms.find(r=>r.id===draft.id);if(!old)return;if(rooms.length===1){say('至少保留一个房间。',true);return;}if(sofa.placed&&overlaps(old,sofa)){say('先收起房间里的家具。',true);return;}const next=rooms.filter(r=>r.id!==old.id),err=roomIssue(next);if(err){say(err,true);return;}rooms=next;draft=null;byId('draftFields').hidden=true;say('空房已拆除。');paint();}
+function threeRooms(){rooms=[{...initialRoom},{id:'b1',name:'主卧',kind:'bedroom',x:12,y:4,w:5,d:5},{id:'b2',name:'次卧',kind:'bedroom',x:12,y:9,w:5,d:5},{id:'b3',name:'小卧室',kind:'bedroom',x:4,y:12,w:8,d:5}];sofa={x:5,y:5,w:3,d:2,placed:true};draft=null;byId('draftFields').hidden=true;say('三室一厅示例，房间通过门洞相连。');paint();}
+function toggleGrid(){showGrid=!showGrid;paint();}
+function changeStyle(){forest=!forest;say('配色已切换，房型和家具位置保持。');paint();}
+function resetDemo(){rooms=[{...initialRoom}];sofa={x:5,y:5,w:3,d:2,placed:true};draft=null;forest=false;showGrid=true;changeMode('furnish');say('沙发已放在客厅。试着移动或转向。');}
+byId('map').addEventListener('click',event=>{const box=byId('map').getBoundingClientRect(),x=Math.floor((event.clientX-box.left)/box.width*N),y=Math.floor((event.clientY-box.top)/box.height*N);if(x<0||y<0||x>=N||y>=N)return;if(mode==='furnish'){if(!sofa.placed){say('先从待布置区放回沙发。',true);return;}tryMove({...sofa,x,y});}else if(draft){draft.x=x;draft.y=y;fields();}else{const r=rooms.find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.d);if(r){draft={...r};fields();}else say('先点击“扩建一个房间”。');}});
+resetDemo();
+</script>
+</body>
+</html>

@@ -150,7 +150,9 @@ struct ContainerEditView: View {
                 editing: containerToEdit, in: modelContext
             )
             dismiss()
-        } catch { errorMessage = "容器没有保存成功，请重试。" }
+        } catch {
+            errorMessage = (error as? HouseRuleError)?.localizedDescription ?? "容器没有保存成功，请重试。"
+        }
     }
 }
 

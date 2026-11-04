@@ -14,36 +14,6 @@ extension AppTheme {
     }
 }
 
-/// 原创收纳盒小表情，以几何形状绘制，跟随系统深色模式。
-struct StorageBuddy: View {
-    var body: some View {
-        GeometryReader { geo in
-            let unit = min(geo.size.width, geo.size.height)
-            ZStack {
-                RoundedRectangle(cornerRadius: unit * 0.24)
-                    .fill(AppTheme.accentEdge).offset(y: unit * 0.07)
-                RoundedRectangle(cornerRadius: unit * 0.24).fill(AppTheme.accent)
-                RoundedRectangle(cornerRadius: unit * 0.05)
-                    .fill(Color.white.opacity(0.4))
-                    .frame(width: unit * 0.22, height: unit * 0.18)
-                    .offset(y: -unit * 0.34)
-                HStack(spacing: unit * 0.09) {
-                    ForEach(0..<2) { _ in
-                        Ellipse().fill(.white).frame(width: unit * 0.25, height: unit * 0.31)
-                            .overlay(alignment: .bottom) {
-                                Capsule().fill(AppTheme.onAccent).frame(width: unit * 0.11, height: unit * 0.17).padding(.bottom, unit * 0.03)
-                            }
-                    }
-                }.offset(y: -unit * 0.02)
-                Capsule().fill(AppTheme.onAccent)
-                    .frame(width: unit * 0.18, height: unit * 0.07).offset(y: unit * 0.27)
-            }
-            .frame(width: unit, height: unit)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
 struct ContainerBadge: View {
     var symbol: String?
     var furnitureID: String?

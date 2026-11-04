@@ -5,6 +5,7 @@ struct DecorationCatalogPicker: View {
     var roomStyle = "home1"
     var dismissOnSelection = true
     var initialQuery = CatalogQuery<DecorationTab>()
+    var failureMessage: () -> String = { "请再试一次。" }
     let onSelect: (RoomDecoration.Kind) -> Bool
 
     var body: some View {
@@ -13,6 +14,7 @@ struct DecorationCatalogPicker: View {
             entries: RoomDecoration.Kind.allCases, initialQuery: initialQuery,
             tabOf: \.tab, nameOf: \.title, searchTextOf: \.catalogSearchText,
             dismissOnSelection: dismissOnSelection,
+            failureMessage: failureMessage,
             thumbnail: { PixelDecorationView(kind: $0, roomStyle: roomStyle) },
             onSelect: onSelect
         )

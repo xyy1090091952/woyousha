@@ -27,6 +27,8 @@ final class Container {
     // 占地大小，例如 1x1, 2x1 (宽x深)
     var gridWidth: Int = 1
     var gridDepth: Int = 1
+    /// 旧贴纸数据默认为 false；升级成功后以 gridX/gridY 为唯一摆放位置。
+    var usesGridPlacement: Bool = false
     // 是否已放置在“家”中
     var isPlaced: Bool = false
     // 关联的家具图片名称 (如果是自定义图片)

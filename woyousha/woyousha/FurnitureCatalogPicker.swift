@@ -6,16 +6,19 @@ struct FurnitureCatalogPicker: View {
     var title = "选择家具造型"
     var dismissOnSelection = false
     var initialQuery = FurnitureCatalogQuery()
+    var failureMessage: () -> String
     let onSelect: (String) -> Bool
 
     /// 初始条件也供原生预览使用，不会写入用户偏好或改变房间数据。
     init(selectedStyleID: String? = nil, title: String = "选择家具造型",
          dismissOnSelection: Bool = false, initialQuery: FurnitureCatalogQuery = FurnitureCatalogQuery(),
+         failureMessage: @escaping () -> String = { "请再试一次。" },
          onSelect: @escaping (String) -> Bool) {
         self.selectedStyleID = selectedStyleID
         self.title = title
         self.dismissOnSelection = dismissOnSelection
         self.initialQuery = initialQuery
+        self.failureMessage = failureMessage
         self.onSelect = onSelect
     }
 
@@ -26,6 +29,7 @@ struct FurnitureCatalogPicker: View {
             tabOf: \.tab, nameOf: \.name, searchTextOf: \.catalogSearchText,
             isSelected: { $0.imageName == selectedStyleID },
             dismissOnSelection: dismissOnSelection,
+            failureMessage: failureMessage,
             thumbnail: { PixelFurnitureView(styleID: $0.imageName) },
             onSelect: { onSelect($0.imageName) }
         )

@@ -213,7 +213,7 @@ struct ContentView: View {
                 .overlay(alignment: .bottomTrailing) { homeHeaderButtonGroup }
                 .overlay(alignment: .bottomLeading) {
                     Button { showDecorationSheet = true } label: {
-                        Label("布置房间", systemImage: "paintbrush.pointed.fill")
+                        Label("打造我的家", systemImage: "paintbrush.pointed.fill")
                             .font(.system(.subheadline, design: .rounded, weight: .heavy))
                             .padding(.horizontal, 12)
                     }
@@ -241,7 +241,6 @@ struct ContentView: View {
 
     private var homeToolbarView: some View {
         HStack(spacing: 10) {
-            StorageBuddy().frame(width: 42, height: 42).padding(.trailing, 4)
             VStack(alignment: .leading, spacing: 3) {
                 Text("我的小天地")
                     .font(.system(.title2, design: .rounded, weight: .heavy))
@@ -681,8 +680,6 @@ struct ContentView: View {
     
     private var emptyStateView: some View {
         VStack(spacing: 16) {
-            StorageBuddy().frame(width: 72, height: 72).padding(.bottom, 8)
-            
             Group {
                 switch selectedFilter {
                 case .all:

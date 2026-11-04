@@ -4,18 +4,17 @@ import SwiftUI
 struct FurnitureInspector: View {
     let container: Container
     let onAction: (FurniturePlacementRepository.Action) -> Bool
-    let onPreviewScale: (Double?) -> Void
     let onClose: () -> Void
-    @State private var scaleDraft: Double
+    let failureMessage: () -> String
     @State private var showStyles = false
 
     init(container: Container, onAction: @escaping (FurniturePlacementRepository.Action) -> Bool,
-         onPreviewScale: @escaping (Double?) -> Void, onClose: @escaping () -> Void) {
+         onClose: @escaping () -> Void,
+         failureMessage: @escaping () -> String = { "没有保存成功，请再试一次。" }) {
         self.container = container
         self.onAction = onAction
-        self.onPreviewScale = onPreviewScale
         self.onClose = onClose
-        _scaleDraft = State(initialValue: container.scale.isFinite ? min(max(container.scale, 0.5), 2) : 1)
+        self.failureMessage = failureMessage
     }
 
     private var styleID: String {
@@ -33,7 +32,7 @@ struct FurnitureInspector: View {
                     Text(container.name)
                         .font(.system(.headline, design: .rounded, weight: .heavy))
                         .lineLimit(1)
-                    Text("造型：\(FurnitureConfig.get(byImageName: styleID)?.name ?? "收纳箱")")
+                    Text("占地 \(container.gridWidth) × \(container.gridDepth) 格 · 固定尺寸")
                         .font(.caption).foregroundStyle(AppTheme.secondaryText)
                 }
                 Spacer(minLength: 4)
@@ -46,37 +45,16 @@ struct FurnitureInspector: View {
 
             HStack(spacing: 8) {
                 actionButton("造型", symbol: "paintpalette.fill", selected: showStyles) { showStyles.toggle() }
-                actionButton("镜像", symbol: "arrow.left.and.right", selected: container.isMirrored) { _ = onAction(.mirror) }
-                actionButton("前移", symbol: "square.3.layers.3d.top.filled") { _ = onAction(.forward) }
-                actionButton("后移", symbol: "square.3.layers.3d.bottom.filled") { _ = onAction(.backward) }
+                actionButton("转向", symbol: "arrow.triangle.2.circlepath", selected: container.isMirrored) { _ = onAction(.mirror) }
                 actionButton("收起", symbol: "archivebox", destructive: true) { _ = onAction(.store) }
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    scaleDraft = max(RoomConfig.furnitureRange.lowerBound, scaleDraft - 0.1)
-                    commitScale()
-                } label: { Image(systemName: "minus").frame(width: 44, height: 44) }
-                .buttonStyle(.plain)
-                .accessibilityLabel("缩小家具")
-                Slider(value: $scaleDraft, in: RoomConfig.furnitureRange, onEditingChanged: { editing in
-                    if !editing {
-                        commitScale()
-                    }
-                })
-                .accessibilityLabel("家具大小")
-                .accessibilityValue("\(Int(scaleDraft * 100))%")
-                Button {
-                    scaleDraft = min(RoomConfig.furnitureRange.upperBound, scaleDraft + 0.1)
-                    commitScale()
-                } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
-                .buttonStyle(.plain)
-                .accessibilityLabel("放大家具")
-                Text("\(Int(scaleDraft * 100))%")
-                    .monospacedDigit().font(.caption.weight(.bold)).frame(width: 44)
+            HStack(spacing:8) {
+                nudge("左","arrow.left",x:-1,y:0)
+                nudge("上","arrow.up",x:0,y:-1)
+                nudge("下","arrow.down",x:0,y:1)
+                nudge("右","arrow.right",x:1,y:0)
             }
-            .background(AppTheme.background, in: RoundedRectangle(cornerRadius: 14))
-            .onChange(of: scaleDraft) { _, value in onPreviewScale(value) }
 
         }
         .padding(16)
@@ -85,17 +63,17 @@ struct FurnitureInspector: View {
         .background(AppTheme.surface)
         .overlay(alignment: .top) { Rectangle().fill(AppTheme.line).frame(height: 2) }
         .sheet(isPresented: $showStyles) {
-            FurnitureCatalogPicker(selectedStyleID: styleID) { id in
+            FurnitureCatalogPicker(selectedStyleID: styleID, failureMessage: failureMessage) { id in
                 onAction(.style(id))
             }
             .presentationDetents([.medium, .large])
         }
-        .onDisappear { onPreviewScale(nil) }
     }
 
-    private func commitScale() {
-        if !onAction(.scale(scaleDraft)) { scaleDraft = container.scale }
-        onPreviewScale(nil)
+    private func nudge(_ title:String,_ symbol:String,x:Int,y:Int) -> some View {
+        actionButton(title+"一格",symbol:symbol) {
+            _=onAction(.move(.init(x:container.gridX+x,y:container.gridY+y)))
+        }
     }
 
     private func actionButton(_ title: String, symbol: String, selected: Bool = false,
@@ -110,6 +88,6 @@ struct FurnitureInspector: View {
             .background(selected ? AppTheme.inset : AppTheme.blueInset, in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(title == "前移" ? "图层向前一层" : (title == "后移" ? "图层向后一层" : title))
+        .accessibilityLabel(title)
     }
 }
