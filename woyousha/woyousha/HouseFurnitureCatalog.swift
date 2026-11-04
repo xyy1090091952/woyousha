@@ -34,6 +34,7 @@ nonisolated struct HouseModelMetrics {
 @MainActor
 enum HouseFurnitureCatalog {
     private static var cache: [String:HouseModelMetrics] = [:]
+    private static var meshes: [String:IsoMesh] = [:]
     private static var shadows: [String:PixelArtShadow?] = [:]
     static func shadow(id:String,mirrored:Bool) -> PixelArtShadow? {
         let key=id+(mirrored ? "-m":"")
@@ -52,18 +53,33 @@ enum HouseFurnitureCatalog {
     static func furniture(_ id: String, mirrored: Bool = false) -> HouseModelMetrics {
         let key=id+(mirrored ? "-m":"")
         if let value=cache[key] { return value }
-        let mesh=IsometricFurniture.model(id)
-        let result=HouseModelMetrics(mesh:mirrored ? mesh.exchangingAxes():mesh)
+        let result=HouseModelMetrics(mesh:furnitureMesh(id,mirrored:mirrored))
         cache[key]=result
         return result
     }
     static func decoration(_ kind: RoomDecoration.Kind, mirrored: Bool = false) -> HouseModelMetrics {
         let key="decoration-"+kind.rawValue+(mirrored ? "-m":"")
         if let value=cache[key] { return value }
-        let mesh=IsometricDecoration.model(kind,style:"home1")
-        let result=HouseModelMetrics(mesh:mirrored ? mesh.exchangingAxes():mesh)
+        let result=HouseModelMetrics(mesh:decorationMesh(kind,style:"home1",mirrored:mirrored))
         cache[key]=result
         return result
+    }
+    /// 统一场景直接使用同一套几何，缓存避免拖动每一格都重新生成曲面模型。
+    static func furnitureMesh(_ id:String,mirrored:Bool=false) -> IsoMesh {
+        let key="f-"+id+(mirrored ? "-m":"")
+        if let mesh=meshes[key] { return mesh }
+        let original=IsometricFurniture.model(id)
+        let mesh=mirrored ? original.exchangingAxes():original
+        meshes[key]=mesh
+        return mesh
+    }
+    static func decorationMesh(_ kind:RoomDecoration.Kind,style:String,mirrored:Bool=false) -> IsoMesh {
+        let key="d-"+kind.rawValue+style+(mirrored ? "-m":"")
+        if let mesh=meshes[key] { return mesh }
+        let original=IsometricDecoration.model(kind,style:style)
+        let mesh=mirrored ? original.exchangingAxes():original
+        meshes[key]=mesh
+        return mesh
     }
     static func layer(for id: String) -> HousePlacementLayer {
         PixelArtRenderer.wallMountedFurniture.contains(id) ? .wall:.floor

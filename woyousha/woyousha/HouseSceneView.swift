@@ -2,15 +2,17 @@ import SwiftUI
 
 @MainActor private enum HouseSceneCache {
     static var images: [String:CGImage] = [:]
-    static func image(layout: HouseLayout,metrics:HouseSceneMetrics,style:String,occupants:[HouseOccupant]) -> CGImage? {
-        let rooms=layout.rooms.map {"\($0.id):\($0.kind.rawValue):\($0.x):\($0.y):\($0.width):\($0.depth)"}.joined(separator:"|")
+    static func key(layout: HouseLayout,metrics:HouseSceneMetrics,style:String,occupants:[HouseOccupant],
+                    items:[HouseSceneItem],selectedIDs:Set<String>,preview:HousePlacementPreview?) -> String {
+        let rooms=layout.rooms.map {"\($0.id):\($0.kind.rawValue):\($0.x):\($0.y):\($0.width):\($0.depth):\($0.floorFinish?.rawValue ?? ""):\($0.wallFinish?.rawValue ?? "")"}.joined(separator:"|")
         let filled=occupants.map {"\($0.cell.x):\($0.cell.y):\($0.footprint.width):\($0.footprint.depth)"}.sorted().joined(separator:"|")
-        let key=style+rooms+filled+"\(metrics.minX),\(metrics.minY),\(metrics.maxX),\(metrics.maxY)"
-        if let image=images[key] { return image }
-        let image=HouseSceneRenderer.render(layout:layout,metrics:metrics,style:style,occupants:occupants)
-        if images.count >= 6 { images.removeAll(keepingCapacity:true) }
+        let objects=items.map {"\($0.id):\($0.source):\($0.cell.x):\($0.cell.y):\($0.mirrored)"}.joined(separator:"|")
+        return style+rooms+filled+objects+selectedIDs.sorted().joined(separator:"|")+(preview?.signature ?? "")
+            + "\(metrics.minX),\(metrics.minY),\(metrics.maxX),\(metrics.maxY),\(metrics.height)"
+    }
+    static func insert(_ image:CGImage,for key:String) {
+        if images.count >= 4 { images.removeAll(keepingCapacity:true) }
         images[key]=image
-        return image
     }
 }
 
@@ -19,12 +21,46 @@ struct HouseSceneView: View {
     let metrics: HouseSceneMetrics
     let style: String
     var occupants: [HouseOccupant] = []
+    var items: [HouseSceneItem] = []
+    var selectedIDs: Set<String> = []
+    var preview: HousePlacementPreview? = nil
+    @State private var lastImage: CGImage?
+    @State private var lastGeometry: String?
+
+    private var geometryKey: String {
+        "\(metrics.width),\(metrics.height),\(metrics.projection.origin.x),\(metrics.projection.origin.y)"
+    }
     var body: some View {
-        if let image=HouseSceneCache.image(layout:layout,metrics:metrics,style:style,occupants:occupants) {
-            Image(decorative:image,scale:1).resizable().interpolation(.none)
-                .frame(width:Double(image.width)*metrics.imageFactor,height:Double(image.height)*metrics.imageFactor)
-                .frame(width:HouseGridConfig.canvasSize,height:HouseGridConfig.canvasSize)
-                .accessibilityHidden(true)
+        let key=HouseSceneCache.key(layout:layout,metrics:metrics,style:style,occupants:occupants,
+                                   items:items,selectedIDs:selectedIDs,preview:preview)
+        let geometry=geometryKey
+        Group {
+            if let image=HouseSceneCache.images[key] ?? (lastGeometry == geometry ? lastImage:nil) {
+                Image(decorative:image,scale:1).resizable().interpolation(.none)
+                    .frame(width:Double(image.width)*metrics.imageFactor,height:Double(image.height)*metrics.imageFactor)
+                    .frame(width:HouseGridConfig.canvasSize,height:HouseGridConfig.canvasSize)
+            } else {
+                Color.clear.frame(width:HouseGridConfig.canvasSize,height:HouseGridConfig.canvasSize)
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id:key) {
+            if let image=HouseSceneCache.images[key] {
+                lastImage=image;lastGeometry=geometry
+                return
+            }
+            let job=HouseSceneRenderer.prepare(layout:layout,metrics:metrics,style:style,occupants:occupants,
+                                               items:items,selectedIDs:selectedIDs,preview:preview)
+            let worker=Task.detached(priority:.userInitiated) { job.render(cancellable:true) }
+            let image=await withTaskCancellationHandler {
+                await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
+            // 换格、装修或离开页面会取消上一任务；旧画面不能覆盖最新的选择。
+            guard !Task.isCancelled,let image else { return }
+            HouseSceneCache.insert(image,for:key)
+            lastImage=image;lastGeometry=geometry
         }
     }
 }

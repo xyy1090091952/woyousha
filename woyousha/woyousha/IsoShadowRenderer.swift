@@ -9,7 +9,9 @@ nonisolated struct PixelArtShadow {
 }
 
 nonisolated enum IsoShadowRenderer {
-    static func render(_ mesh: IsoMesh, scale: Double, groundPlane: Double? = nil) -> PixelArtShadow? {
+    static func render(_ mesh: IsoMesh, scale: Double, groundPlane: Double? = nil,
+                       cancellable: Bool = false) -> PixelArtShadow? {
+        if cancellable && Task.isCancelled { return nil }
         let points = mesh.faces.flatMap(\.points)
         guard let minimum = points.map(\.z).min() else { return nil }
         let ground = groundPlane ?? minimum
@@ -42,6 +44,7 @@ nonisolated enum IsoShadowRenderer {
                 let y0=max(0,Int(floor(min(a.y,b.y,c.y)))),y1=min(height-1,Int(ceil(max(a.y,b.y,c.y))))
                 guard x0<=x1,y0<=y1 else { continue }
                 for y in y0...y1 {
+                    if cancellable && Task.isCancelled { return }
                     for x in x0...x1 {
                         let px=Double(x)+0.5,py=Double(y)+0.5
                         let u=((b.y-c.y)*(px-c.x)+(c.x-b.x)*(py-c.y))/denom
@@ -51,13 +54,18 @@ nonisolated enum IsoShadowRenderer {
                 }
             }
         }
-        for silhouette in silhouettes { fill(silhouette,value:1) }
+        for silhouette in silhouettes {
+            if cancellable && Task.isCancelled { return nil }
+            fill(silhouette,value:1)
+        }
         // 真实脚底附近的面覆盖更深的接触影，桌子的四条腿不会变成一个圆斑。
         for face in mesh.faces where face.points.allSatisfy({ $0.z <= ground+IsoPixelStyle.contactHeight }) {
+            if cancellable && Task.isCancelled { return nil }
             fill(face.points.map { projection.project(.init($0.x,$0.y,ground)) },value:2)
         }
         var pixels = [UInt8](repeating:0,count:width*height*4)
         for y in 1..<(height-1) {
+            if cancellable && Task.isCancelled { return nil }
             for x in 1..<(width-1) {
                 let i=y*width+x,value=mask[i]
                 guard value>0 else { continue }

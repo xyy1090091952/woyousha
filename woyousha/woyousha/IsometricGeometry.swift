@@ -3,7 +3,7 @@ import CoreGraphics
 
 /// 所有房间和家具共用 2:1 等轴投影：两条水平轴分别向左下、右下倾斜。
 /// z 表示高度。这里仅计算 2D 像素，不依赖 3D 引擎或 WebView。
-nonisolated struct IsoPoint {
+nonisolated struct IsoPoint: Sendable {
     var x: Double
     var y: Double
     var z: Double
@@ -11,7 +11,7 @@ nonisolated struct IsoPoint {
     func offset(_ p: IsoPoint) -> IsoPoint { IsoPoint(x+p.x, y+p.y, z+p.z) }
 }
 
-nonisolated struct IsoProjection {
+nonisolated struct IsoProjection: Sendable {
     let scale: Double
     let origin: CGPoint
 
@@ -31,13 +31,15 @@ nonisolated enum IsoColor {
     }
 }
 
-nonisolated struct IsoFace {
+nonisolated struct IsoFace: Sendable {
     var points: [IsoPoint]
     let color: UInt32
     let outline: UInt32?
     var material: IsoMaterial = .automatic
     /// 仅用于场景底座消融；家具主体始终保持完整轮廓。
     var dissolvesBelow: Double? = nil
+    /// 场景里的物体编号，用于统一遮挡、地面投影和只沿可见主体绘制选中边。
+    var renderOwner: Int = 0
 
     var normal: IsoPoint {
         guard points.count >= 3 else { return .init(0, 0, 1) }
@@ -57,7 +59,7 @@ nonisolated struct IsoFace {
     }
 }
 
-nonisolated struct IsoMesh {
+nonisolated struct IsoMesh: Sendable {
     var faces: [IsoFace] = []
 
     mutating func face(_ points: [IsoPoint], _ color: UInt32, outline: UInt32? = nil,
@@ -203,17 +205,21 @@ nonisolated struct IsoMesh {
 }
 
 /// 软件像素画布。深度缓冲只负责 2D 多边形的遮挡，避免书架隔板/沙发扶手穿透。
-/// 小尺寸图片仅生成一次并缓存；拖拽时不会重复栅格化。
+/// 小尺寸图片由调用方缓存；家园格子、装修或选择状态变化时重新合成深度图。
 /// 世界坐标纹理 → 五档色阶 → 深度遮挡与边缘光；不再对所有材质统一撒噪点。
 nonisolated enum IsoRasterizer {
-    static func render(_ mesh: IsoMesh, width: Int, height: Int, projection: IsoProjection) -> CGImage? {
+    static func render(_ mesh: IsoMesh, width: Int, height: Int, projection: IsoProjection,
+                       selectedOwners: Set<Int> = [], shadow: PixelArtShadow? = nil,
+                       shadowReceivers: Set<Int> = [], cancellable: Bool = false) -> CGImage? {
+        if cancellable && Task.isCancelled { return nil }
         let count = width*height
         var colors = [UInt32](repeating: 0, count: count)
         var depths = [Double](repeating: -.infinity, count: count)
         var slopesX = [Double](repeating: 0, count: count)
         var slopesY = [Double](repeating: 0, count: count)
+        var owners = [Int](repeating: 0, count: count)
 
-        func write(_ x: Int, _ y: Int, _ depth: Double, _ color: UInt32, dx: Double, dy: Double) {
+        func write(_ x: Int, _ y: Int, _ depth: Double, _ color: UInt32, dx: Double, dy: Double, owner: Int) {
             guard x >= 0, y >= 0, x < width, y < height else { return }
             let index = y*width+x
             guard depth >= depths[index]-0.00001 else { return }
@@ -221,9 +227,11 @@ nonisolated enum IsoRasterizer {
             colors[index] = color
             slopesX[index] = dx
             slopesY[index] = dy
+            owners[index] = owner
         }
 
         for face in mesh.faces {
+            if cancellable && Task.isCancelled { return nil }
             let p = face.points.map(projection.project)
             let d = face.points.map(projection.depth)
             guard p.count >= 3 else { continue }
@@ -251,6 +259,7 @@ nonisolated enum IsoRasterizer {
                 let y1=min(height-1,Int(ceil(max(a.y,b.y,c.y))))
                 guard x0<=x1, y0<=y1 else { continue }
                 for y in y0...y1 {
+                    if cancellable && Task.isCancelled { return nil }
                     for x in x0...x1 {
                         let px=Double(x)+0.5, py=Double(y)+0.5
                         let u=((b.y-c.y)*(px-c.x)+(c.x-b.x)*(py-c.y))/denominator
@@ -276,7 +285,7 @@ nonisolated enum IsoRasterizer {
                             let texture = IsoPixelStyle.texture(treatment,u:tu,v:tv,seed:seed)
                             let tone = texture*Double(ramp.count)+(IsoPixelStyle.dither(x,y)-0.5)*treatment.ditherStrength
                             let level = Int(min(Double(ramp.count-1),max(0,floor(tone))))
-                            write(x,y,u*d[ia]+v*d[ib]+w*d[ic],ramp[level],dx:dx,dy:dy)
+                            write(x,y,u*d[ia]+v*d[ib]+w*d[ic],ramp[level],dx:dx,dy:dy,owner:face.renderOwner)
                         }
                     }
                 }
@@ -287,6 +296,7 @@ nonisolated enum IsoRasterizer {
         // 凹角染紫，左上遮挡边补暖光；只改物体自己的像素，透明背景不会出现光晕。
         var pixels = [UInt8](repeating: 0, count: count*4)
         for y in 0..<height {
+            if cancellable && Task.isCancelled { return nil }
             for x in 0..<width {
                 let index = y*width+x
                 guard depths[index] > -.infinity else { continue }
@@ -311,6 +321,59 @@ nonisolated enum IsoRasterizer {
                 pixels[index*4+1] = UInt8((color>>8)&255)
                 pixels[index*4+2] = UInt8(color&255)
                 pixels[index*4+3] = 255
+            }
+        }
+        // 投影只落在深度图里实际露出的地面/地毯上，不盖住前方墙壁和家具。
+        if let shadow, let data=shadow.image.dataProvider?.data {
+            let bytes=[UInt8](data as Data)
+            let offsetX=projection.origin.x+shadow.bounds.minX
+            let offsetY=projection.origin.y+shadow.bounds.minY
+            for y in 0..<height {
+                if cancellable && Task.isCancelled { return nil }
+                let sy=Int(floor(Double(y)+0.5-offsetY))
+                guard sy >= 0,sy < shadow.image.height else { continue }
+                for x in 0..<width {
+                    let index=y*width+x
+                    guard pixels[index*4+3] != 0,shadowReceivers.contains(owners[index]) else { continue }
+                    let sx=Int(floor(Double(x)+0.5-offsetX))
+                    guard sx >= 0,sx < shadow.image.width else { continue }
+                    let source=(sy*shadow.image.width+sx)*4
+                    let alpha=Double(bytes[source+3])/255
+                    guard alpha > 0 else { continue }
+                    for c in 0..<3 {
+                        pixels[index*4+c]=UInt8(min(255,Double(bytes[source+c])+Double(pixels[index*4+c])*(1-alpha)).rounded())
+                    }
+                }
+            }
+        }
+        if !selectedOwners.isEmpty {
+            // 只扩张选中物体的可见像素；前方墙体比轮廓更近时，白边也被墙体挡住。
+            let radius=Int(ceil(PixelArtRenderer.selectionOutlineRadius))
+            var outline=Set<Int>()
+            for y in 0..<height {
+                if cancellable && Task.isCancelled { return nil }
+                for x in 0..<width {
+                    let source=y*width+x
+                    guard selectedOwners.contains(owners[source]),pixels[source*4+3] != 0 else { continue }
+                    let boundary=[(x-1,y),(x+1,y),(x,y-1),(x,y+1)].contains { nx,ny in
+                        nx < 0 || ny < 0 || nx >= width || ny >= height || owners[ny*width+nx] != owners[source]
+                    }
+                    guard boundary else { continue }
+                    for dy in -radius...radius {
+                        for dx in -radius...radius where dx*dx+dy*dy <= radius*radius {
+                            let nx=x+dx,ny=y+dy
+                            guard nx >= 0,ny >= 0,nx < width,ny < height else { continue }
+                            let target=ny*width+nx
+                            guard !selectedOwners.contains(owners[target]) else { continue }
+                            let borderDepth=depths[source]+Double(dx)*slopesX[source]+Double(dy)*slopesY[source]
+                            guard !depths[target].isFinite || depths[target] <= borderDepth+0.00001 else { continue }
+                            outline.insert(target)
+                        }
+                    }
+                }
+            }
+            for index in outline {
+                for c in 0..<4 { pixels[index*4+c]=255 }
             }
         }
         return image(pixels, width: width, height: height)

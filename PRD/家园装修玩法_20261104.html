@@ -35,6 +35,7 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 <section id="contract">
 <span class="id">产品约定</span><h2>装修的结果，是自己的户型和布置</h2>
 <p>用户提出：去掉非品牌小盒子图案，补充屋外场景，允许自己扩建成三室一厅，家具使用固定大小和格子摆放，整体装修像游戏一样。上述五项是本次功能范围的依据。</p>
+<p>后续调整：贴纸删除区沿用品牌风格；扩建墙体与家具按空间前后互相遮挡；过道允许放家具；宅地外围增加轻纹理；每个房间可单独换地板和墙面。</p>
 <p>使用者是正在整理物品和布置家的 App 用户。首页进入“打造我的家”后，切换“建房”或“布置”。成功操作会显示保存提示；再次打开，房间、家具和装饰保持一致。家具仍是收纳容器，移动或收起家具不会改变其中的物品。</p>
 <div class="flow" aria-label="装修流程"><span>首页进入</span>→<span>建房扩建</span>→<span>选家具</span>→<span>按格布置</span>→<span>保存后查看</span></div>
 <p class="judgment"><b>首版产品判断：</b>采用 24 × 24 格宅地，默认客厅 8 × 8 格，每个房间长宽为 3～12 格。它给扩建留出空间，同时让手机上的格子能清楚辨认。首版房间是矩形，家具提供两个等轴朝向。范围和数量是本次实现判断，未经过用户研究验证。</p>
@@ -43,7 +44,8 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 <section id="scene">
 <span class="id">FR-01</span><h2>庭院与家的视角</h2>
 <p>首页和装修页展示同一个家。去掉左上角的小盒子图案，保留现有品牌按钮配色。屋外由草地、石路、树木和远侧围栏组成；树木所在的区域建成房间或放入家具后，树木让出空间。</p>
-<p>阳光木屋使用奶油杏墙、橘金木地板；森林小屋使用绿墙和自然木色。切换风格只影响配色，房型和家具位置保持。房间用途会区分地板颜色。</p>
+<p>阳光木屋默认使用奶油杏墙、橘金木地板；森林小屋默认使用绿墙和自然木色。房间用途会区分默认地板颜色。已单独选择装修的房间保留所选地板和墙色，切换整体风格不会覆盖它；房型和家具位置保持。</p>
+<p>宅地外围使用浅奶油底与稀疏织纸纹理，纹理固定在屏幕上。墙体和家具按真实前后关系遮挡，选中白边也受遮挡，地面投影不会涂黑前方墙体或家具。</p>
 <p>“建房”展示整个宅地，便于选择扩建位置；“布置”围绕当前房间和已摆放的庭院物品取景。两指缩放改变视角，家具实际占地保持。点“查看整个家”恢复视角。网格按钮可以显示或隐藏辅助格子，摆放规则持续生效。</p>
 <p class="note">庭院是场景背景，首版没有单独的地形编辑器。户外分类的家具可以摆在庭院空格，室内家具要完整放进房间。</p>
 </section>
@@ -55,9 +57,12 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 <tr><td>用途</td><td>客厅、卧室、厨房、浴室、书房</td><td>从用途列表选择</td></tr>
 <tr><td>宽 / 深</td><td>新房默认 5 × 5 格</td><td>整数，分别为 3～12 格</td></tr>
 <tr><td>位置</td><td>拖动草稿，按格移动</td><td>完整位于宅地内，不重叠，整屋连通</td></tr>
+<tr><td>地板</td><td>随房间配色；可选蜂蜜木、浅橡木、胡桃木、奶油砖、鼠尾草砖、暖粉砖</td><td>选择写入草稿，保存房间后生效</td></tr>
+<tr><td>墙面</td><td>随房间配色；可选奶油杏、米白、鼠尾草、桃粉、雾蓝、暖陶</td><td>各房间单独保存，不改变家具和收纳物品</td></tr>
 </tbody></table>
-<p>房间至少共用两格墙面才相连。相邻房间自动开两格宽的门洞，并在门洞两侧各保留一格深的通道。新房产生的通道被家具挡住时，先移开家具再扩建。</p>
+<p>房间至少共用两格墙面才相连。相邻房间自动开两格宽的门洞。门洞两侧的过道允许放家具，扩建不会因为通道上有家具而被拦截；家具仍须完整位于同一房间，不能跨墙。</p>
 <p>点已保存房间的名称可重新编辑。改小房间不能裁掉家具或装饰，改动后挂墙物品仍需靠后墙。整个移动已摆物品的房间前，要先把该房间清空。拆房只能拆空房，至少保留一间，且拆除后其他房间仍需连通。</p>
+<p>换装修：建房 → 点房间 → 地板与墙面 → 选择颜色和材质 → 预览房间 → 保存房间。取消房间草稿会恢复原装修。已有家具不用收起，家具里的物品继续保留。旧房型没有装修字段时继续使用原默认配色。</p>
 <p>草稿只在确认保存后生效。“取消”、切换模式或返回会放弃未保存的草稿。点“完成”会先尝试保存当前草稿；草稿不合法时留在页面并说明原因，用户可修改或取消。</p>
 </section>
 <section id="furnish">
@@ -66,11 +71,12 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 <p>点击场景中的物品选中，显示白色轮廓、占地格和固定操作面板。拖动时只预览目标格；绿色表示可放，红色表示不可放。松手后合法位置自动保存，不合法则回到原位置。“左 / 上 / 下 / 右一格”适合微调。</p>
 <p>“转向”切换两个朝向，同时更新占地校验。家具不能因转向挤进其他物品或越过房间边缘。换造型也要校验新的占地，失败时原造型保持，并说明原因。大小固定，显示前后关系自动决定。</p>
 <table><thead><tr><th>物品类型</th><th>可摆位置</th><th>与其他物品的关系</th></tr></thead><tbody>
-<tr><td>普通家具 / 落地装饰</td><td>完整位于同一房间；户外家具也可完整位于庭院</td><td>同层不能重叠，不能占门洞通道</td></tr>
-<tr><td>挂墙家具 / 墙面装饰</td><td>完整位于房间，起始格靠任一后侧墙</td><td>墙面层之间不能重叠，不能占门洞通道</td></tr>
+<tr><td>普通家具 / 落地装饰</td><td>完整位于同一房间；户外家具也可完整位于庭院</td><td>同层不能重叠；过道可以摆放</td></tr>
+<tr><td>挂墙家具 / 墙面装饰</td><td>完整位于房间，起始格靠任一后侧墙</td><td>墙面层之间不能重叠；过道格不额外禁放</td></tr>
 <tr><td>地毯</td><td>完整位于同一房间</td><td>可在家具下方，可铺通道；两张地毯不重叠</td></tr>
 </tbody></table>
 <p>“收起”把物品放进待布置区，记录继续保留。点击待布置物品会重新寻找可用空格，找不到则继续待布置。装饰提供删除；删除后记录消失，家具面板仅提供收起。没有待布置物品时，添加入口仍然可用。</p>
+<p>首页贴纸拖动删除区使用奶油底、暖棕图标和统一圆角。进入目标区时显示“松手删除”和暖红提示，移出即可取消；多选拖动继续沿用原来的批量删除规则。</p>
 <p class="judgment"><b>首版产品判断：</b>占地按家具模型长宽向上取整，物品之间采用格子碰撞。同一格可分别容纳地毯、落地层和墙面层。首版小摆件放在地面，尚未提供放上桌面或架子的操作。</p>
 </section>
 <section id="demo">
@@ -81,7 +87,7 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 <div class="demo-grid">
 <div>
 <svg id="map" viewBox="0 0 480 480" role="img" aria-label="24乘24格宅地，点击选择房间或指定摆放格子"></svg>
-<div class="legend"><span><i style="background:#bacd8b"></i>庭院</span><span><i style="background:#e5ad70"></i>房间</span><span><i style="background:#93b79a"></i>门洞通道</span><span><i style="background:#579991"></i>家具</span></div>
+<div class="legend"><span><i style="background:#bacd8b"></i>庭院</span><span><i style="background:#e5ad70"></i>房间</span><span><i style="background:#93b79a"></i>门洞连接（可摆放）</span><span><i style="background:#579991"></i>家具</span></div>
 <div class="actions"><button onclick="toggleGrid()">显示 / 隐藏格子</button><button onclick="changeStyle()">切换配色</button></div>
 <p class="note">坐标从左上角开始。方向按钮在示意图中移动一格，手机中沿等轴方向移动。</p>
 </div>
@@ -99,9 +105,11 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 <label class="field">名称 <input id="roomName" maxlength="12" oninput="updateDraft()" value="卧室"></label>
 <label class="field">用途 <select id="roomKind" onchange="updateDraft()"><option value="bedroom">卧室</option><option value="living">客厅</option><option value="kitchen">厨房</option><option value="bathroom">浴室</option><option value="study">书房</option></select></label>
 <label class="field">宽 / 深 <input id="roomWidth" type="number" min="3" max="12" value="5" oninput="updateDraft()"><input id="roomDepth" type="number" min="3" max="12" value="5" oninput="updateDraft()"></label>
+<label class="field">地板 <select id="roomFloor" onchange="updateDraft()"><option value="">随房间配色</option><option value="honeyWood">蜂蜜木</option><option value="paleWood">浅橡木</option><option value="walnutWood">胡桃木</option><option value="creamTile">奶油砖</option><option value="sageTile">鼠尾草砖</option><option value="roseTile">暖粉砖</option></select></label>
+<label class="field">墙面 <select id="roomWall" onchange="updateDraft()"><option value="">随房间配色</option><option value="apricot">奶油杏</option><option value="ivory">米白</option><option value="sage">鼠尾草</option><option value="rose">桃粉</option><option value="mistBlue">雾蓝</option><option value="warmClay">暖陶</option></select></label>
 <div class="actions"><button onclick="moveDraft(-1,0)">左</button><button onclick="moveDraft(0,-1)">上</button><button onclick="moveDraft(0,1)">下</button><button onclick="moveDraft(1,0)">右</button></div>
 <div class="actions"><button class="primary" id="confirm" onclick="confirmRoom()">保存房间</button><button onclick="cancelDraft()">取消</button><button id="deleteRoom" onclick="removeRoom()">拆除空房</button></div>
-<p class="note">点击宅地更改草稿位置，点击已保存房间可编辑。草稿红色时不能保存。</p>
+<p class="note">点击宅地更改草稿位置，点击已保存房间可编辑。地板颜色与墙面边框预览所选装修，取消会恢复原配色。草稿红色时不能保存。</p>
 </div>
 </div>
 <div id="feedback" role="status" aria-live="polite">沙发已放在客厅。试着移动或转向。</div>
@@ -116,7 +124,8 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 <p>旧版自由摆放首次进入会对齐附近的合法空格，保留旧位置备份。原物品名称、数量、家具归属不变。空间不足的家具或装饰收进待布置区，并显示收起的数量。再次打开只读取已完成的格子位置，不反复改变布置。</p>
 <table><thead><tr><th>情况</th><th>画面反馈</th><th>下一步</th></tr></thead><tbody>
 <tr><td>重叠 / 越界 / 跨墙</td><td>候选格红色，保存失败保持旧位置</td><td>移到房间内空格</td></tr>
-<tr><td>扩建会堵门</td><td>提示先移动挡门物品</td><td>取消草稿，布置移开家具，再扩建</td></tr>
+<tr><td>家具位于门洞两侧</td><td>通过重叠与跨墙校验即可摆放</td><td>正常保存，过道不额外禁放</td></tr>
+<tr><td>取消装修草稿</td><td>恢复已保存地板和墙面</td><td>重新点选房间继续装修</td></tr>
 <tr><td>房间不连通</td><td>提示至少共用两格墙面</td><td>让新房贴住已有房间</td></tr>
 <tr><td>没有足够空格</td><td>添加失败或保留待布置状态</td><td>扩建、收起其他物品、选择较小家具</td></tr>
 <tr><td>迁移准备未完成</td><td>说明未完成，装修操作停止</td><td>重新进入后重试已完成之外的部分</td></tr>
@@ -124,10 +133,12 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}td,th{tex
 </tbody></table>
 </section>
 </main>
-<footer>依据：用户本次五项装修要求与既有 Oyoha 配色约定。首版范围和规则已明确标注产品判断。演示与手机数据互不影响。</footer>
+<footer>依据：用户家园游戏化要求、后续五项调整与既有 Oyoha 配色约定。首版范围和规则已明确标注产品判断。演示与手机数据互不影响。</footer>
 <script>
 // 俯视演示只表达产品规则，不连接 App 或任何外部服务。
 const S=20,N=24,initialRoom={id:'living',name:'客厅',kind:'living',x:4,y:4,w:8,d:8};
+const floorColors={honeyWood:'#d9954d',paleWood:'#d9c09b',walnutWood:'#a77a58',creamTile:'#eae0c8',sageTile:'#b9cec1',roseTile:'#ddbbaa'};
+const wallColors={apricot:'#f0d1aa',ivory:'#ede3d1',sage:'#bcccaf',rose:'#e1beb2',mistBlue:'#bdd0d5',warmClay:'#d6ac8f'};
 let rooms,sofa,draft,mode='furnish',showGrid=true,forest=false;
 const byId=id=>document.getElementById(id);
 const covers=(r,p)=>p.x>=r.x&&p.y>=r.y&&p.x+p.w<=r.x+r.w&&p.y+p.d<=r.y+r.d;
@@ -147,17 +158,18 @@ function roomIssue(list){
  const links=doors(list),seen=new Set([list[0].id]);let changed=true;
  while(changed){changed=false;for(const link of links)if(seen.has(link.a)||seen.has(link.b)){const n=seen.size;seen.add(link.a);seen.add(link.b);if(n!==seen.size)changed=true;}}
  if(seen.size!==list.length)return '房间要贴着已有房间，至少共用两格墙面。';
- if(sofa?.placed){if(!list.some(r=>covers(r,sofa)))return '先移走房间里的家具，再修改房型。';if(links.some(p=>overlaps(p,sofa)))return '门口要留出通道，先移开挡门家具。';}
+ if(sofa?.placed&&!list.some(r=>covers(r,sofa)))return '先移走房间里的家具，再修改房型。';
  return '';
 }
 function proposed(){return rooms.some(r=>r.id===draft.id)?rooms.map(r=>r.id===draft.id?draft:r):rooms.concat(draft);}
 function draftIssue(){const old=rooms.find(r=>r.id===draft.id);if(old&&sofa.placed&&covers(old,sofa)&&(old.x!==draft.x||old.y!==draft.y))return '先收起房间里的家具，再移动整个房间。';return roomIssue(proposed());}
-function furnitureIssue(p){if(!rooms.some(r=>covers(r,p)))return '家具要完整放在同一个房间里，不能跨墙或摆出地板。';if(doors(rooms).some(d=>overlaps(d,p)))return '门口要留出通道。';return '';}
+function furnitureIssue(p){if(!rooms.some(r=>covers(r,p)))return '家具要完整放在同一个房间里，不能跨墙或摆出地板。';return '';}
 function say(message,error=false){byId('feedback').textContent=message;byId('feedback').classList.toggle('error',error);}
 function svgRect(r,fill,stroke='',dash=''){return `<rect x="${r.x*S+1}" y="${r.y*S+1}" width="${r.w*S-2}" height="${r.d*S-2}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-dasharray="${dash}"/>`;}
 function paint(){
  let out=`<rect width="480" height="480" fill="${forest?'#a5ba75':'#bacd8b'}"/>`;
- for(const r of rooms){out+=svgRect(r,forest?'#c5a475':r.kind==='bedroom'?'#debd8b':'#e5ad70','#9c7654');out+=`<text x="${(r.x+r.w/2)*S}" y="${(r.y+r.d/2)*S}" text-anchor="middle" fill="#64482f" font-size="14">${r.name.replace(/[<>&"]/g,'')}</text>`;}
+ const shown=draft&&!draftIssue()?proposed():rooms;
+ for(const r of shown){out+=svgRect(r,floorColors[r.floor]||(forest?'#c5a475':r.kind==='bedroom'?'#debd8b':'#e5ad70'),wallColors[r.wall]||(forest?'#bcccaf':'#f0d1aa'));out+=`<text x="${(r.x+r.w/2)*S}" y="${(r.y+r.d/2)*S}" text-anchor="middle" fill="#64482f" font-size="14">${r.name.replace(/[<>&"]/g,'')}</text>`;}
  for(const d of doors(rooms))out+=svgRect(d,'#93b79a');
  if(showGrid)for(let i=1;i<N;i++)out+=`<path d="M${i*S} 0V480M0 ${i*S}H480" stroke="#ffffff" opacity=".32" stroke-width=".7"/>`;
  if(sofa.placed){out+=svgRect(sofa,'#579991','#ffffff');out+=`<text x="${(sofa.x+sofa.w/2)*S}" y="${(sofa.y+sofa.d/2)*S+4}" text-anchor="middle" fill="white" font-size="12">沙发</text>`;}
@@ -170,9 +182,9 @@ function nudge(dx,dy){if(!sofa.placed){say('沙发在待布置区，先放回房
 function rotateItem(){if(!sofa.placed){say('先把沙发放回房间。',true);return;}tryMove({...sofa,w:sofa.d,d:sofa.w});}
 function storeItem(){sofa.placed=false;say('沙发已收起，沙发里的书 · 7 本继续保留。');paint();}
 function replaceItem(){const choices=[];for(let y=0;y<N;y++)for(let x=0;x<N;x++)choices.push({...sofa,x,y});choices.sort((a,b)=>(Math.abs(a.x-5)+Math.abs(a.y-5))-(Math.abs(b.x-5)+Math.abs(b.y-5))||a.y-b.y||a.x-b.x);const point=choices.find(p=>!furnitureIssue(p));if(point)tryMove(point);else say('没有足够空格，沙发继续留在待布置区。',true);}
-function fields(){byId('draftFields').hidden=false;byId('roomName').value=draft.name;byId('roomKind').value=draft.kind;byId('roomWidth').value=draft.w;byId('roomDepth').value=draft.d;byId('deleteRoom').hidden=!rooms.some(r=>r.id===draft.id);paint();const err=draftIssue();say(err||'绿色草稿可保存；点击宅地可以挪动。',!!err);}
+function fields(){byId('draftFields').hidden=false;byId('roomName').value=draft.name;byId('roomKind').value=draft.kind;byId('roomWidth').value=draft.w;byId('roomDepth').value=draft.d;byId('roomFloor').value=draft.floor||'';byId('roomWall').value=draft.wall||'';byId('deleteRoom').hidden=!rooms.some(r=>r.id===draft.id);paint();const err=draftIssue();say(err||'绿色草稿可保存；点击宅地可以挪动。',!!err);}
 function newRoom(){draft={id:'room-'+Date.now(),name:'卧室',kind:'bedroom',x:12,y:4,w:5,d:5};outer:for(let y=0;y<N;y++)for(let x=0;x<N;x++){draft.x=x;draft.y=y;if(!draftIssue())break outer;}fields();}
-function updateDraft(){if(!draft)return;draft={...draft,name:byId('roomName').value,kind:byId('roomKind').value,w:Number(byId('roomWidth').value),d:Number(byId('roomDepth').value)};paint();const err=draftIssue();say(err||'草稿可保存。',!!err);}
+function updateDraft(){if(!draft)return;draft={...draft,name:byId('roomName').value,kind:byId('roomKind').value,w:Number(byId('roomWidth').value),d:Number(byId('roomDepth').value),floor:byId('roomFloor').value,wall:byId('roomWall').value};paint();const err=draftIssue();say(err||'草稿可保存。',!!err);}
 function moveDraft(dx,dy){if(!draft)return;draft.x+=dx;draft.y+=dy;fields();}
 function confirmRoom(){if(!draft)return;const err=draftIssue();if(err){say(err,true);return;}rooms=proposed();draft=null;byId('draftFields').hidden=true;say('房间已保存，相邻门洞已连接。');paint();}
 function cancelDraft(){draft=null;byId('draftFields').hidden=true;say('草稿已取消，已保存的家保持。');paint();}

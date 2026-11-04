@@ -33,7 +33,6 @@ final class HouseLayoutStore {
             let wasInside=layout.rooms.contains { $0.contains(item.cells) }
             let nowInside=proposed.rooms.contains { $0.contains(item.cells) }
             guard wasInside == nowInside else { throw HouseRuleError.roomNotEmpty }
-            if item.layer != .covering && !item.cells.isDisjoint(with:proposed.passageCells) { throw HouseRuleError.doorway }
             if item.layer == .wall {
                 guard let owner=proposed.rooms.first(where:{$0.contains(item.cells)}),
                       item.cell.x == owner.x || item.cell.y == owner.y else { throw HouseRuleError.wallOnly }

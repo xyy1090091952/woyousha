@@ -37,6 +37,9 @@ nonisolated struct HouseRoom: Identifiable, Codable, Equatable {
     var y: Int
     var width: Int
     var depth: Int
+    /// Optional 兼容没有装修字段的旧存档；nil 时继续使用原来的房间配色。
+    var floorFinish: HouseFloorFinish? = nil
+    var wallFinish: HouseWallFinish? = nil
 
     enum Kind: String, Codable, CaseIterable {
         case living, bedroom, kitchen, bathroom, study
@@ -66,7 +69,7 @@ nonisolated struct HouseRoom: Identifiable, Codable, Equatable {
 }
 
 nonisolated enum HouseRuleError: LocalizedError, Equatable {
-    case roomBounds, roomOverlap, disconnected, roomName, outsideRoom, occupied, doorway
+    case roomBounds, roomOverlap, disconnected, roomName, outsideRoom, occupied
     case wallOnly, noSpace, lastRoom, roomNotEmpty, fixedSize, damagedSave
     var errorDescription: String? {
         switch self {
@@ -76,7 +79,6 @@ nonisolated enum HouseRuleError: LocalizedError, Equatable {
         case .roomName: return "给房间起一个 1～12 字的名字。"
         case .outsideRoom: return "家具要完整放在同一个房间里，不能跨墙或摆出地板。"
         case .occupied: return "这些格子已经被占用，请换一个位置。"
-        case .doorway: return "门口要留出通道，先把挡住门洞的家具移开。"
         case .wallOnly: return "这件物品需要靠房间的后侧墙面摆放。"
         case .noSpace: return "没有足够的空格了，可以先扩建房间或收起一些家具。"
         case .lastRoom: return "至少保留一个房间。"
@@ -87,7 +89,7 @@ nonisolated enum HouseRuleError: LocalizedError, Equatable {
     }
 }
 
-/// 连接相邻房间的两格门洞。两侧各预留一格深的通道，家具不堵门。
+/// 连接相邻房间的两格门洞。过道仅标记房间连接，不限制家具摆放。
 nonisolated struct HouseDoor {
     let vertical: Bool
     let boundary: Int
@@ -190,7 +192,6 @@ nonisolated enum HousePlacementRules {
         if layer == .wall {
             guard let room,cell.x == room.x || cell.y == room.y else { throw HouseRuleError.wallOnly }
         }
-        if layer != .covering && !cells.isDisjoint(with:layout.passageCells) { throw HouseRuleError.doorway }
         guard !occupants.contains(where:{$0.id != id && $0.layer == layer && !cells.isDisjoint(with:$0.cells)})
         else { throw HouseRuleError.occupied }
     }

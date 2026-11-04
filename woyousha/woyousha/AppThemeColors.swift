@@ -26,6 +26,8 @@ enum AppTheme {
     static let blueInset = secondaryInset
     static let yellow = Color(red: 1, green: 0.79, blue: 0.38)
     static let cameraBackground = Color(red: 0.14, green: 0.11, blue: 0.10)
+    static let destructive = adaptive(light: 0xAB4939, dark: 0xF2A18E)
+    static let destructiveInset = adaptive(light: 0xFBE9DC, dark: 0x573B30)
 
     private static func adaptive(light: UInt32, dark: UInt32) -> Color {
         #if canImport(UIKit)

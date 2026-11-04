@@ -145,7 +145,7 @@ nonisolated struct IsoSurfaceTreatment {
 }
 
 /// 材质只决定像素纹理，不改变家具的尺寸、编号或保存数据。
-nonisolated enum IsoMaterial {
+nonisolated enum IsoMaterial: Sendable {
     case automatic, wood, plaster, foliage, smooth
 
     static func inferred(from color: UInt32) -> IsoMaterial {

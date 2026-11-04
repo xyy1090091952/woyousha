@@ -38,6 +38,7 @@ struct HomeDecorationView: View {
     @State private var showsFurnitureCatalog=false
     @State private var showsDecorationCatalog=false
     @State private var gridReady=false
+    @State private var targetedContainerID:String?
 
     private enum Mode:String,CaseIterable { case furnish="布置",build="建房" }
     private enum DrawerCategory:String,CaseIterable { case furniture="家具",decorations="装饰" }
@@ -55,7 +56,33 @@ struct HomeDecorationView: View {
         HouseFurnitureCatalog.occupants(containers:containers,decorations:decorations.decorations)
     }
     private var metrics:HouseSceneMetrics {
-        .init(layout:house.layout,occupants:occupants,showsPlot:isEditing && mode == .build)
+        .init(layout:displayLayout,occupants:occupants,showsPlot:isEditing && mode == .build,
+              ceilingHeight:sceneItems.map(\.visualHeight).max() ?? HouseGridConfig.wallHeight)
+    }
+    private var displayLayout:HouseLayout {
+        if isEditing,mode == .build,let room=draftRoom,draftIssue == nil { return house.layout.replacing(room) }
+        return house.layout
+    }
+    private var sceneItems:[HouseSceneItem] {
+        containers.filter {$0.isPlaced && $0.usesGridPlacement}.map {
+            HouseSceneItem(id:$0.id.uuidString,source:.furniture(styleID($0)),cell:furnitureCell($0),mirrored:$0.isMirrored)
+        } + decorations.decorations.filter {$0.isPlaced && $0.gridX != nil}.map {
+            HouseSceneItem(id:$0.id,source:.decoration($0.kind),cell:decorationCell($0),mirrored:$0.isMirrored)
+        }
+    }
+    private var sceneOccupants:[HouseOccupant] {
+        sceneItems.map { HouseOccupant(id:$0.id,cell:$0.cell,footprint:$0.metrics.footprint,layer:$0.layer) }
+    }
+    private var sceneSelection:Set<String> {
+        Set([selectedContainerID,selectedDecorationID,targetedContainerID].compactMap {$0})
+    }
+    private var placementPreview:HousePlacementPreview? {
+        guard isEditing,mode == .furnish,
+              let item=sceneItems.first(where:{$0.id == selectedContainerID || $0.id == selectedDecorationID}) else { return nil }
+        let outdoors:Bool
+        if case .furniture(let id)=item.source { outdoors=HouseFurnitureCatalog.outdoors(id) } else { outdoors=false }
+        return .init(cell:item.cell,footprint:item.metrics.footprint,
+            isValid:placementIssue(cell:item.cell,model:item.metrics,layer:item.layer,id:item.id,outdoors:outdoors) == nil)
     }
     private var selectedContainer:Container? {
         containers.first {$0.isPlaced && $0.id.uuidString == selectedContainerID}
@@ -88,7 +115,7 @@ struct HomeDecorationView: View {
                                 .font(.caption).foregroundStyle(notice == nil ? AppTheme.secondaryText:AppTheme.accentText)
                                 .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,16).padding(.vertical,8)
                             ScrollView { inspector }.disabled(!gridReady)
-                                .frame(height:mode == .build ? 264:242)
+                                .frame(height:mode == .build ? 320:242)
                         }.background(AppTheme.surface)
                     }
                 }
@@ -173,6 +200,7 @@ struct HomeDecorationView: View {
                 .scaleEffect(factor)
                 .position(x:geometry.size.width/2+offset.width,y:geometry.size.height/2+offset.height)
         }
+        .background(HouseBackdrop())
         .contentShape(Rectangle())
         .gesture(SimultaneousGesture(
             DragGesture(minimumDistance:12)
@@ -197,25 +225,13 @@ struct HomeDecorationView: View {
     private func scene(factor:Double) -> some View {
         let m=metrics
         return ZStack {
-            HouseSceneView(layout:house.layout,metrics:m,style:currentRoomImage,occupants:occupants).zIndex(-1000)
+            HouseSceneView(layout:displayLayout,metrics:m,style:currentRoomImage,occupants:sceneOccupants,
+                           items:sceneItems,selectedIDs:sceneSelection,preview:placementPreview)
+                .allowsHitTesting(false).zIndex(-1000)
             if isEditing && showsGrid {
                 HouseCellsShape(cells:gridCells,metrics:m).stroke(AppTheme.onAccent.opacity(0.18),lineWidth:0.8)
                     .allowsHitTesting(false).zIndex(-870)
-                HouseCellsShape(cells:house.layout.passageCells,metrics:m).fill(Color.white.opacity(0.25))
-                    .allowsHitTesting(false).zIndex(-860)
             }
-            ZStack {
-                ForEach(containers.filter {$0.isPlaced && $0.usesGridPlacement}) { item in
-                    let id=styleID(item),model=HouseFurnitureCatalog.furniture(id,mirrored:item.isMirrored)
-                    let cell=furnitureCell(item),origin=model.origin(at:cell,wall:HouseFurnitureCatalog.layer(for:id) == .wall)
-                    HouseSpriteShadow(shadow:HouseFurnitureCatalog.shadow(id:id,mirrored:item.isMirrored),origin:origin,metrics:m)
-                }
-                ForEach(decorations.decorations.filter {$0.isPlaced && $0.gridX != nil}) { item in
-                    let model=HouseFurnitureCatalog.decoration(item.kind,mirrored:item.isMirrored)
-                    HouseSpriteShadow(shadow:HouseFurnitureCatalog.shadow(kind:item.kind,style:currentRoomImage,mirrored:item.isMirrored),
-                        origin:model.origin(at:decorationCell(item),wall:item.kind.isWallMounted),metrics:m)
-                }
-            }.frame(width:800,height:800).clipShape(HouseGroundMask(metrics:m)).allowsHitTesting(false).zIndex(-880)
 
             ForEach(containers.filter {$0.isPlaced && $0.usesGridPlacement}) { item in
                 furniture(item,metrics:m,factor:factor)
@@ -276,13 +292,13 @@ struct HomeDecorationView: View {
         let id=styleID(item),model=HouseFurnitureCatalog.furniture(id,mirrored:item.isMirrored)
         let cell=furnitureCell(item),layer=HouseFurnitureCatalog.layer(for:id)
         let p=m.screen(model.origin(at:cell,wall:layer == .wall))
-        let issue=placementIssue(cell:cell,model:model,layer:layer,id:item.id.uuidString,outdoors:HouseFurnitureCatalog.outdoors(id))
         return ZStack {
-            if selectedContainerID == item.id.uuidString && isEditing && mode == .furnish {
-                HouseCellsShape(cells:model.footprint.cells(at:cell),metrics:m)
-                    .fill((issue == nil ? Color.green:Color.red).opacity(0.23)).allowsHitTesting(false)
-            }
-            FurnitureView(container:item,isSelected:selectedContainerID == item.id.uuidString,renderFactor:m.spriteFactor)
+            // 主体由统一深度场景显示；透明交互层继续负责点击、拖动与收纳拖放。
+            FurnitureView(container:item,isSelected:selectedContainerID == item.id.uuidString,renderFactor:m.spriteFactor,
+                showsBody:false,onTargetChanged:{targeted in
+                    if targeted { targetedContainerID=item.id.uuidString }
+                    else if targetedContainerID == item.id.uuidString { targetedContainerID=nil }
+                })
                 .position(x:p.x+model.sprite.midX*m.spriteFactor,y:p.y+model.sprite.midY*m.spriteFactor)
                 .gesture(isEditing && gridReady && mode == .furnish ? DragGesture(minimumDistance:6)
                     .onChanged { value in
@@ -310,15 +326,10 @@ struct HomeDecorationView: View {
         let model=HouseFurnitureCatalog.decoration(item.kind,mirrored:item.isMirrored)
         let cell=decorationCell(item),layer=HouseFurnitureCatalog.layer(for:item.kind)
         let p=m.screen(model.origin(at:cell,wall:item.kind.isWallMounted))
-        let issue=placementIssue(cell:cell,model:model,layer:layer,id:item.id)
         return ZStack {
-            if selectedDecorationID == item.id && isEditing {
-                HouseCellsShape(cells:model.footprint.cells(at:cell),metrics:m)
-                    .fill((issue == nil ? Color.green:Color.red).opacity(0.23)).allowsHitTesting(false)
-            }
-            PixelDecorationView(kind:item.kind,roomStyle:currentRoomImage,mirrored:item.isMirrored,
-                                showsOutline:selectedDecorationID == item.id)
+            Color.clear
                 .frame(width:model.sprite.width*m.spriteFactor,height:model.sprite.height*m.spriteFactor)
+                .contentShape(Rectangle()).accessibilityLabel(item.name)
                 .position(x:p.x+model.sprite.midX*m.spriteFactor,y:p.y+model.sprite.midY*m.spriteFactor)
                 .gesture(isEditing && gridReady && mode == .furnish ? DragGesture(minimumDistance:6)
                     .onChanged { value in
@@ -489,16 +500,21 @@ struct FurnitureView:View {
     let container:Container
     let isSelected:Bool
     var renderFactor:Double? = nil
+    var showsBody=true
+    var onTargetChanged:(Bool)->Void = {_ in}
     @Environment(\.modelContext) private var modelContext
     @State private var isTargeted=false
     @State private var dropError:String?
     var body:some View {
         let id=FurnitureConfig.styleID(name:container.name,icon:container.icon,savedID:container.furnitureImageName)
-        let oldSize=FurnitureConfig.displaySize(for:container)
         let model=HouseFurnitureCatalog.furniture(id,mirrored:container.isMirrored)
-        let size=renderFactor.map { CGSize(width:model.sprite.width*$0,height:model.sprite.height*$0) } ?? oldSize
-        PixelFurnitureView(styleID:id,isMirrored:container.isMirrored,showsOutline:isSelected || isTargeted)
-            .frame(width:size.width,height:size.height).contentShape(Rectangle()).accessibilityLabel(container.name)
+        let size=renderFactor.map { CGSize(width:model.sprite.width*$0,height:model.sprite.height*$0) } ?? FurnitureConfig.displaySize(for:container)
+        Group {
+            if showsBody { PixelFurnitureView(styleID:id,isMirrored:container.isMirrored,showsOutline:isSelected || isTargeted) }
+            else { Color.clear }
+        }
+            .frame(width:size.width,height:size.height)
+            .contentShape(Rectangle()).accessibilityLabel(container.name)
             .overlay(alignment:.top) {
                 if isTargeted {
                     Text("收进 \(container.name)").font(.caption.weight(.bold)).foregroundStyle(.white)
@@ -519,7 +535,7 @@ struct FurnitureView:View {
                     NotificationCenter.default.post(name:Self.didDropItemsNotification,object:nil)
                     return true
                 } catch { dropError="没有收纳成功，请再试一次。";return false }
-            } isTargeted: { isTargeted=$0 }
+            } isTargeted: { isTargeted=$0;onTargetChanged($0) }
             .alert("收纳未完成",isPresented:Binding(get:{dropError != nil},set:{if !$0 {dropError=nil}})) {
                 Button("知道了",role:.cancel) { dropError=nil }
             } message: { Text(dropError ?? "") }

@@ -56,6 +56,7 @@ struct ContentView: View {
     
     // 垃圾桶的高度阈值（屏幕底部多少像素算作垃圾桶区域）
     private let trashBinHeight: CGFloat = 120
+    @State private var trashBinFrame: CGRect = .zero
     
     // UserDefaults Key
     private let hasInitializedKey = "hasInitializedDefaultContainers"
@@ -530,23 +531,7 @@ struct ContentView: View {
                                     isTrashBinActive = false // 确保松手后重置状态
                                 },
                                 onDragMove: { location in
-                                    // 检查是否进入垃圾桶区域
-                                    // 这里使用简单的 Y 坐标判断，假设垃圾桶在底部 120pt 区域
-                                    // 注意：location 是相对于 window 的坐标
-                                    if let window = UIApplication.shared.connectedScenes
-                                        .compactMap({ $0 as? UIWindowScene })
-                                        .flatMap({ $0.windows })
-                                        .first(where: { $0.isKeyWindow }) {
-                                        let screenHeight = window.bounds.height
-                                        let isInTrashArea = location.y > (screenHeight - trashBinHeight)
-                                        
-                                        // 只有状态改变时才更新，减少 SwiftUI 刷新
-                                        if isTrashBinActive != isInTrashArea {
-                                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                                                isTrashBinActive = isInTrashArea
-                                            }
-                                        }
-                                    }
+                                    updateTrashTarget(at:location)
                                 }
                             ) {
                                 // 拖拽预览
@@ -601,20 +586,7 @@ struct ContentView: View {
                                     isTrashBinActive = false
                                 },
                                 onDragMove: { location in
-                                    // 检查是否进入垃圾桶区域
-                                    if let window = UIApplication.shared.connectedScenes
-                                        .compactMap({ $0 as? UIWindowScene })
-                                        .flatMap({ $0.windows })
-                                        .first(where: { $0.isKeyWindow }) {
-                                        let screenHeight = window.bounds.height
-                                        let isInTrashArea = location.y > (screenHeight - trashBinHeight)
-                                        
-                                        if isTrashBinActive != isInTrashArea {
-                                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                                                isTrashBinActive = isInTrashArea
-                                            }
-                                        }
-                                    }
+                                    updateTrashTarget(at:location)
                                 }
                             ) {
                                 DragPreviewView(items: [item])
@@ -624,7 +596,7 @@ struct ContentView: View {
                     // 明确列宽后，缩放直接更新尺寸，保留已有小图与视图状态。
                 }
                 .padding(AppTheme.Layout.pagePadding)
-                .padding(.bottom, isEditing ? 80 : 0) // 给垃圾桶留位置
+                .padding(.bottom, isEditing ? trashBinHeight : 0)
                 // 双指缩放手势
                 .simultaneousGesture(
                     MagnificationGesture()
@@ -705,41 +677,16 @@ struct ContentView: View {
         GeometryReader { geo in
             VStack {
                 Spacer()
-                ZStack {
-                    // 背景
-                    Rectangle()
-                        .fill(isTrashBinActive ? .ultraThinMaterial : .regularMaterial)
-                        .opacity(isTrashBinActive ? 1.0 : 0.8) // 默认半透明
-                        .ignoresSafeArea()
-                        .frame(height: isTrashBinActive ? 180 : 80) // 恢复默认高度
-                        .background(
-                            isTrashBinActive ? Color.red.opacity(0.1) : Color.clear
-                        )
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTrashBinActive)
-                    
-                    VStack(spacing: 8) {
-                        Image(systemName: "trash.fill")
-                            .font(.system(size: isTrashBinActive ? 40 : 24))
-                            .foregroundStyle(isTrashBinActive ? .red : .gray)
-                            .scaleEffect(isTrashBinActive ? 1.2 : 1.0)
-                        
-                        if isTrashBinActive {
-                            Text("松手删除")
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .fontWeight(.bold)
-                                .transition(.opacity.combined(with: .scale))
-                        } else {
-                            Text("拖拽到这里删除")
-                                .font(.caption2)
-                                .foregroundStyle(.gray)
-                                .transition(.opacity)
-                        }
+                StickerDeleteZone(isActive:isTrashBinActive)
+                .frame(height:trashBinHeight)
+                .contentShape(Rectangle())
+                .background {
+                    GeometryReader { target in
+                        Color.clear
+                            .onAppear { trashBinFrame=target.frame(in:.global) }
+                            .onChange(of:target.frame(in:.global)) { _,frame in trashBinFrame=frame }
                     }
-                    .offset(y: isTrashBinActive ? -10 : 0) // 恢复默认位置
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isTrashBinActive)
                 }
-                .frame(maxWidth: .infinity)
                 // 确保 dropDestination 覆盖整个区域
                 .dropDestination(for: String.self) { items, location in
                     // 删除逻辑
@@ -755,6 +702,13 @@ struct ContentView: View {
         }
         // 确保不阻挡底部的点击（如果没有背景色的话），但在拖拽时需要阻挡
         .allowsHitTesting(isEditing || !draggingItems.isEmpty)
+    }
+
+    /// 两种贴纸列表都按实际删除区判断，避免安全区或界面尺寸变化后亮起错误区域。
+    private func updateTrashTarget(at location:CGPoint) {
+        let active=trashBinFrame.contains(location)
+        guard active != isTrashBinActive else { return }
+        withAnimation(.easeOut(duration:0.15)) { isTrashBinActive=active }
     }
     
     // 抽离删除逻辑

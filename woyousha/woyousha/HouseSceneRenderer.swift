@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 /// 建筑、庭院、网格和物品共用投影。扩建改变取景范围，不改变物品的格子坐标。
-nonisolated struct HouseSceneMetrics {
+nonisolated struct HouseSceneMetrics: Sendable {
     let minX: Int
     let minY: Int
     let maxX: Int
@@ -15,7 +15,8 @@ nonisolated struct HouseSceneMetrics {
     var topInset: Double { (HouseGridConfig.canvasSize-Double(height)*imageFactor)/2 }
     var spriteFactor: Double { worldFactor/PixelArtRenderer.furniturePixelScale }
 
-    init(layout: HouseLayout, occupants: [HouseOccupant] = [], showsPlot: Bool = false) {
+    init(layout: HouseLayout, occupants: [HouseOccupant] = [], showsPlot: Bool = false,
+         ceilingHeight: Double = HouseGridConfig.wallHeight) {
         let cells=layout.floorCells.union(occupants.reduce(into:Set<HouseCell>()){$0.formUnion($1.cells)})
         let margin=HouseGridConfig.yardMargin
         minX=showsPlot ? 0:max(0,(cells.map(\.x).min() ?? 4)-margin)
@@ -23,11 +24,12 @@ nonisolated struct HouseSceneMetrics {
         maxX=showsPlot ? HouseGridConfig.plotSize:min(HouseGridConfig.plotSize,(cells.map(\.x).max() ?? 11)+1+margin)
         maxY=showsPlot ? HouseGridConfig.plotSize:min(HouseGridConfig.plotSize,(cells.map(\.y).max() ?? 11)+1+margin)
         let tile=HouseGridConfig.tile,s=PixelArtRenderer.roomPixelScale
+        let ceiling=max(HouseGridConfig.wallHeight,ceilingHeight)
         width=Int(ceil(Double(maxX-minX+maxY-minY)*tile*s+40))
-        height=Int(ceil(Double(maxX-minX+maxY-minY)*tile*s*0.5+HouseGridConfig.wallHeight*s+48))
+        height=Int(ceil(Double(maxX-minX+maxY-minY)*tile*s*0.5+ceiling*s+48))
         projection=IsoProjection(scale:s,origin:.init(
             x:20+Double(maxY-minX)*tile*s,
-            y:24+HouseGridConfig.wallHeight*s-Double(minX+minY)*tile*s*0.5))
+            y:24+ceiling*s-Double(minX+minY)*tile*s*0.5))
     }
 
     func screen(_ point: IsoPoint) -> CGPoint {
@@ -43,6 +45,24 @@ nonisolated struct HouseSceneMetrics {
         let limit=Double(HouseGridConfig.plotSize*2)
         return .init(x:Int(min(limit,max(-limit,(y+x/2)/HouseGridConfig.tile)).rounded()),
                      y:Int(min(limit,max(-limit,(y-x/2)/HouseGridConfig.tile)).rounded()))
+    }
+}
+
+/// 主线程只准备不可变几何，逐像素绘图交给后台，不跨线程访问 SwiftData 或家具缓存。
+nonisolated struct HouseRenderJob: Sendable {
+    let scene: IsoMesh
+    let casters: IsoMesh
+    let metrics: HouseSceneMetrics
+    let selectedOwners: Set<Int>
+    let shadowReceivers: Set<Int>
+
+    func render(cancellable: Bool = false) -> CGImage? {
+        if cancellable && Task.isCancelled { return nil }
+        let shadow=IsoShadowRenderer.render(casters,scale:metrics.projection.scale,groundPlane:0,
+                                            cancellable:cancellable)
+        return IsoRasterizer.render(scene,width:metrics.width,height:metrics.height,projection:metrics.projection,
+                                    selectedOwners:selectedOwners,shadow:shadow,shadowReceivers:shadowReceivers,
+                                    cancellable:cancellable)
     }
 }
 
@@ -90,21 +110,24 @@ nonisolated enum HouseSceneRenderer {
             fence(&mesh,x:Double(metrics.minX)*tile,y:Double(y)*tile,alongX:false)
         }
 
-        let wall: UInt32=green ? 0xBCCCAF:OyohaPalette.wall
+        let defaultWall: UInt32=green ? 0xBCCCAF:OyohaPalette.wall
         let trim: UInt32=green ? 0x62816A:OyohaPalette.trim
         for room in layout.rooms {
-            let roomFloor: UInt32
+            let wall=room.wallFinish?.color ?? defaultWall
+            let defaultFloor: UInt32
             switch room.kind {
-            case .bathroom: roomFloor=0xC4DDD1
-            case .kitchen: roomFloor=0xE8DDC1
-            case .bedroom: roomFloor=green ? 0xC9B181:0xDEAC6C
-            default: roomFloor=green ? 0xC5A475:OyohaPalette.floor
+            case .bathroom: defaultFloor=0xC4DDD1
+            case .kitchen: defaultFloor=0xE8DDC1
+            case .bedroom: defaultFloor=green ? 0xC9B181:0xDEAC6C
+            default: defaultFloor=green ? 0xC5A475:OyohaPalette.floor
             }
+            let roomFloor=room.floorFinish?.color ?? defaultFloor
+            let floorMaterial:IsoMaterial=room.floorFinish?.material ?? (room.kind == .bathroom || room.kind == .kitchen ? .smooth:.wood)
             mesh.box(Double(room.x)*tile,Double(room.y)*tile,-3,Double(room.width)*tile,Double(room.depth)*tile,3,trim,material:.wood)
             for cell in room.cells {
                 let tint=IsoColor.shade(roomFloor,0.97+IsoPixelStyle.hash(cell.x,cell.y,19)*0.06)
                 mesh.top(Double(cell.x)*tile+0.18,Double(cell.y)*tile+0.18,0.15,tile-0.36,tile-0.36,tint,
-                         material:room.kind == .bathroom || room.kind == .kitchen ? .smooth:.wood)
+                         material:floorMaterial)
             }
             wallEdge(&mesh,room:room,vertical:true,boundary:room.x,start:room.y,length:room.depth,
                      height:HouseGridConfig.wallHeight,layout:layout,color:wall,trim:trim)
@@ -122,13 +145,17 @@ nonisolated enum HouseSceneRenderer {
                                  height:Double,layout:HouseLayout,color:UInt32,trim:UInt32) {
         let tile=HouseGridConfig.tile
         let doors=layout.doors.filter {$0.vertical == vertical && $0.boundary == boundary && $0.roomIDs.contains(room.id)}
-        let shared=layout.rooms.contains { other in
-            guard other.id != room.id else { return false }
-            if vertical { return (other.x == boundary || other.x+other.width == boundary) && max(start,other.y)<min(start+length,other.y+other.depth) }
-            return (other.y == boundary || other.y+other.depth == boundary) && max(start,other.x)<min(start+length,other.x+other.width)
-        }
-        let cutHeight=shared ? min(height,24):height
         for cell in start..<(start+length) {
+            let neighbor=layout.rooms.first { other in
+                guard other.id != room.id else { return false }
+                if vertical { return (other.x == boundary || other.x+other.width == boundary) && cell >= other.y && cell < other.y+other.depth }
+                return (other.y == boundary || other.y+other.depth == boundary) && cell >= other.x && cell < other.x+other.width
+            }
+            // 共用墙只画一次，采用靠近观察者的房间颜色，避免不同装修在同一面抢图层。
+            if let neighbor,
+               vertical ? (room.x+room.width == boundary && neighbor.x == boundary)
+                        : (room.y+room.depth == boundary && neighbor.y == boundary) { continue }
+            let cutHeight=neighbor == nil ? height:min(height,24)
             if doors.contains(where:{cell >= $0.start && cell < $0.start+2}) { continue }
             let x=vertical ? Double(boundary)*tile-0.8:Double(cell)*tile
             let y=vertical ? Double(cell)*tile:Double(boundary)*tile-0.8
@@ -150,9 +177,45 @@ nonisolated enum HouseSceneRenderer {
         }
     }
 
-    static func render(layout: HouseLayout, metrics: HouseSceneMetrics, style: String,
-                       occupants: [HouseOccupant] = []) -> CGImage? {
-        IsoRasterizer.render(model(layout:layout,metrics:metrics,style:style,occupants:occupants),
-                             width:metrics.width,height:metrics.height,projection:metrics.projection)
+    /// 墙、家具、装饰在同一个深度缓冲中绘制，隔墙可以挡住后面的椅子，
+    /// 前面的椅子也能挡住墙；不再依赖整张图片的 zIndex。
+    @MainActor static func prepare(layout: HouseLayout, metrics: HouseSceneMetrics, style: String,
+                       occupants: [HouseOccupant] = [],items:[HouseSceneItem] = [],
+                       selectedIDs:Set<String> = [],preview:HousePlacementPreview? = nil) -> HouseRenderJob {
+        var scene=model(layout:layout,metrics:metrics,style:style,occupants:occupants)
+        for i in scene.faces.indices {
+            let points=scene.faces[i].points
+            if let z=points.first?.z,z <= 0.3,points.allSatisfy({abs($0.z-z)<0.001}) {
+                scene.faces[i].renderOwner=1
+            }
+        }
+        if let preview {
+            for cell in preview.footprint.cells(at:preview.cell) {
+                let index=scene.faces.count,tile=HouseGridConfig.tile
+                scene.top(Double(cell.x)*tile+0.3,Double(cell.y)*tile+0.3,0.22,tile-0.6,tile-0.6,
+                          preview.isValid ? 0xBBD89A:0xE6AC9E,material:.smooth)
+                scene.faces[index].renderOwner=1
+            }
+        }
+        var receivers=Set([1]),selection=Set<Int>()
+        for (index,item) in items.enumerated() {
+            let owner=index+2
+            scene.merge(item.worldMesh(style:style,owner:owner))
+            if item.layer == .covering { receivers.insert(owner) }
+            if selectedIDs.contains(item.id) { selection.insert(owner) }
+        }
+        let casters=IsoMesh(faces:scene.faces.filter {
+            !receivers.contains($0.renderOwner) && $0.points.contains(where:{$0.z > 0.3})
+        })
+        return HouseRenderJob(scene:scene,casters:casters,metrics:metrics,
+                              selectedOwners:selection,shadowReceivers:receivers)
+    }
+
+    /// 同步入口供静态预览和核验使用；正式页面通过不可变任务在后台绘图。
+    @MainActor static func render(layout: HouseLayout, metrics: HouseSceneMetrics, style: String,
+                       occupants: [HouseOccupant] = [],items:[HouseSceneItem] = [],
+                       selectedIDs:Set<String> = [],preview:HousePlacementPreview? = nil) -> CGImage? {
+        prepare(layout:layout,metrics:metrics,style:style,occupants:occupants,
+                items:items,selectedIDs:selectedIDs,preview:preview).render()
     }
 }
