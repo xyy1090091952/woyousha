@@ -90,12 +90,12 @@ enum HouseFurnitureCatalog {
     static func outdoors(_ id: String) -> Bool { FurnitureConfig.get(byImageName:id)?.category == .outdoor }
 
     static func occupants(containers: [Container], decorations: [RoomDecoration]) -> [HouseOccupant] {
-        var result=containers.filter { $0.isPlaced && $0.usesGridPlacement }.map { item in
+        var result=containers.filter { $0.isPlaced && $0.usesGridPlacement && $0.surfaceAttachment == nil }.map { item in
             let id=FurnitureConfig.styleID(name:item.name,icon:item.icon,savedID:item.furnitureImageName)
             return HouseOccupant(id:item.id.uuidString,cell:.init(x:item.gridX,y:item.gridY),
                                  footprint:furniture(id,mirrored:item.isMirrored).footprint,layer:layer(for:id))
         }
-        for item in decorations where item.isPlaced {
+        for item in decorations where item.isPlaced && item.surfaceAttachment == nil {
             guard let x=item.gridX,let y=item.gridY else { continue }
             result.append(HouseOccupant(id:item.id,cell:.init(x:x,y:y),
                 footprint:decoration(item.kind,mirrored:item.isMirrored).footprint,layer:layer(for:item.kind)))

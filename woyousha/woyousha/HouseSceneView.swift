@@ -6,7 +6,7 @@ import SwiftUI
                     items:[HouseSceneItem],selectedIDs:Set<String>,preview:HousePlacementPreview?) -> String {
         let rooms=layout.rooms.map {"\($0.id):\($0.kind.rawValue):\($0.x):\($0.y):\($0.width):\($0.depth):\($0.floorFinish?.rawValue ?? ""):\($0.wallFinish?.rawValue ?? "")"}.joined(separator:"|")
         let filled=occupants.map {"\($0.cell.x):\($0.cell.y):\($0.footprint.width):\($0.footprint.depth)"}.sorted().joined(separator:"|")
-        let objects=items.map {"\($0.id):\($0.source):\($0.cell.x):\($0.cell.y):\($0.mirrored)"}.joined(separator:"|")
+        let objects=items.map(\.renderSignature).joined(separator:"|")
         return style+rooms+filled+objects+selectedIDs.sorted().joined(separator:"|")+(preview?.signature ?? "")
             + "\(metrics.minX),\(metrics.minY),\(metrics.maxX),\(metrics.maxY),\(metrics.height)"
     }

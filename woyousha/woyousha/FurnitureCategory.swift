@@ -63,10 +63,10 @@ nonisolated enum FurnitureTab: String, CatalogTab {
 }
 
 extension FurnitureConfig {
-    var tab: FurnitureTab { category.tab }
+    nonisolated var tab: FurnitureTab { category.tab }
 
     /// 搜索同时覆盖名称、tab 名、细分组名与同义词，例如搜“宠物”“灯”依然能找到。
-    var catalogSearchText: String {
+    nonisolated var catalogSearchText: String {
         ([name, tab.title, category.title] + searchKeywords).joined(separator: " ")
     }
 }

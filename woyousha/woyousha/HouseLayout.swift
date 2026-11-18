@@ -7,7 +7,7 @@ nonisolated enum HouseGridConfig {
     static let plotSize = 24
     static let roomSize = 3...12
     static let wallHeight = 52.0
-    static let yardMargin = 3
+    static let yardMargin = 4
     static let canvasSize = 800.0
 }
 

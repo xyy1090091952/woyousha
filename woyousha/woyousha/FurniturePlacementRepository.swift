@@ -8,7 +8,8 @@ enum FurniturePlacementRepository {
     enum ValidationError: Error { case unknownStyle }
 
     enum Action {
-        case place(HouseCell), move(HouseCell), style(String), mirror, store
+        case place(HouseCell), move(HouseCell), style(String), mirror, store, delete
+        case attach(HouseSurfaceAttachment), moveSurface(x:Int,y:Int)
     }
 
     /// 点击目录后一次完成创建与摆放，避免出现“已创建却没放进房间”的半完成状态。
@@ -46,6 +47,7 @@ enum FurniturePlacementRepository {
     static func perform(_ action: Action, on target: Container, among containers: [Container],
                         decorations: [RoomDecoration] = [], layout:HouseLayout? = nil,
                         in context: ModelContext) throws {
+        if case .delete=action { try ContainerRepository.delete(target,in:context);return }
         let layout=layout ?? HouseLayoutStore.shared.layout
         try layout.validate()
         let oldID=FurnitureConfig.styleID(name:target.name,icon:target.icon,savedID:target.furnitureImageName)
@@ -62,16 +64,31 @@ enum FurniturePlacementRepository {
         default: cell = .init(x:target.gridX,y:target.gridY)
         }
         let model=HouseFurnitureCatalog.furniture(id,mirrored:mirrored)
+        // 历史误收纳也不允许换成另一件装饰家具。
+        if id != oldID,HouseFurnitureAttributes.role(id) == .decorative,!(target.items?.isEmpty ?? true) {
+            throw FurnitureUseError.containsItems
+        }
+        let snapshots=HouseStackingRules.snapshots(containers:containers,decorations:decorations)
+        var attachment=target.surfaceAttachment
+        switch action {
+        case .place,.move: attachment=nil
+        case .attach(let value): attachment=value
+        case .moveSurface(let x,let y):
+            guard let value=attachment else { throw HouseStackingError.missingSupport }
+            attachment=try HouseStackingRules.nudged(value,x:x,y:y,among:snapshots)
+        default: break
+        }
         if !isStore(action) {
-            try HousePlacementRules.validate(cell:cell,footprint:model.footprint,layer:HouseFurnitureCatalog.layer(for:id),
-                outdoors:HouseFurnitureCatalog.outdoors(id),layout:layout,
-                occupants:HouseFurnitureCatalog.occupants(containers:containers,decorations:decorations),
-                excluding:target.id.uuidString)
+            let proposed=HouseSceneItem(id:target.id.uuidString,source:.furniture(id),cell:cell,
+                mirrored:mirrored,attachment:attachment)
+            try HouseStackingRules.validatePlacement(proposed,among:snapshots,layout:layout)
         }
         // 先提交已有操作，本次事务失败只回滚本次装修操作。
         try context.save()
         switch action {
         case .place, .move:
+            target.isPlaced=true
+        case .attach,.moveSurface:
             target.isPlaced=true
         case .style(let id):
             guard let config = FurnitureConfig.get(byImageName: id) else { return }
@@ -81,8 +98,10 @@ enum FurniturePlacementRepository {
             target.isMirrored.toggle()
         case .store:
             target.isPlaced = false
+        case .delete: return
         }
         target.gridX=cell.x;target.gridY=cell.y
+        target.surfaceAttachment=attachment
         target.gridWidth=model.footprint.width;target.gridDepth=model.footprint.depth
         target.usesGridPlacement=true
         target.scale=1
@@ -95,6 +114,21 @@ enum FurniturePlacementRepository {
             context.rollback()
             throw error
         }
+    }
+
+    /// 尺寸升级只更新派生字段，不搬动已有家具或改变物品归属。
+    static func synchronizeDimensions(_ containers:[Container], in context:ModelContext) throws {
+        let changed=containers.filter {
+            let size=HouseFurnitureCatalog.furniture($0.resolvedStyleID,mirrored:$0.isMirrored).footprint
+            return $0.gridWidth != size.width || $0.gridDepth != size.depth
+        }
+        guard !changed.isEmpty else { return }
+        try context.save()
+        for item in changed {
+            let size=HouseFurnitureCatalog.furniture(item.resolvedStyleID,mirrored:item.isMirrored).footprint
+            item.gridWidth=size.width;item.gridDepth=size.depth
+        }
+        do { try context.save() } catch { context.rollback();throw error }
     }
 
     private static func isStore(_ action: Action) -> Bool {

@@ -6,15 +6,21 @@ struct FurnitureInspector: View {
     let onAction: (FurniturePlacementRepository.Action) -> Bool
     let onClose: () -> Void
     let failureMessage: () -> String
+    var surfaceOptions: [HouseSurfaceOption] = []
+    var supportName: String? = nil
+    var onGround: () -> Void = {}
     @State private var showStyles = false
+    @State private var showDeleteConfirmation = false
 
     init(container: Container, onAction: @escaping (FurniturePlacementRepository.Action) -> Bool,
          onClose: @escaping () -> Void,
-         failureMessage: @escaping () -> String = { "没有保存成功，请再试一次。" }) {
+         failureMessage: @escaping () -> String = { "没有保存成功，请再试一次。" },
+         surfaceOptions:[HouseSurfaceOption] = [],supportName:String? = nil,onGround:@escaping ()->Void = {}) {
         self.container = container
         self.onAction = onAction
         self.onClose = onClose
         self.failureMessage = failureMessage
+        self.surfaceOptions=surfaceOptions;self.supportName=supportName;self.onGround=onGround
     }
 
     private var styleID: String {
@@ -32,7 +38,8 @@ struct FurnitureInspector: View {
                     Text(container.name)
                         .font(.system(.headline, design: .rounded, weight: .heavy))
                         .lineLimit(1)
-                    Text("占地 \(container.gridWidth) × \(container.gridDepth) 格 · 固定尺寸")
+                    Text(container.furnitureRole.rawValue + (supportName.map {" · 在\($0)上"} ??
+                        " · 占地 \(container.gridWidth) × \(container.gridDepth) 格"))
                         .font(.caption).foregroundStyle(AppTheme.secondaryText)
                 }
                 Spacer(minLength: 4)
@@ -47,6 +54,7 @@ struct FurnitureInspector: View {
                 actionButton("造型", symbol: "paintpalette.fill", selected: showStyles) { showStyles.toggle() }
                 actionButton("转向", symbol: "arrow.triangle.2.circlepath", selected: container.isMirrored) { _ = onAction(.mirror) }
                 actionButton("收起", symbol: "archivebox", destructive: true) { _ = onAction(.store) }
+                actionButton("删除", symbol: "trash", destructive: true) { showDeleteConfirmation=true }
             }
 
             HStack(spacing:8) {
@@ -55,7 +63,10 @@ struct FurnitureInspector: View {
                 nudge("下","arrow.down",x:0,y:1)
                 nudge("右","arrow.right",x:1,y:0)
             }
-
+            if HouseFurnitureAttributes.canSitOnSurface(.furniture(styleID)) {
+                HouseSurfaceMenu(options:surfaceOptions,isAttached:container.surfaceAttachment != nil,
+                    onAttach:{_ = onAction(.attach($0))},onGround:onGround)
+            }
         }
         .padding(16)
         .foregroundStyle(AppTheme.text)
@@ -63,16 +74,22 @@ struct FurnitureInspector: View {
         .background(AppTheme.surface)
         .overlay(alignment: .top) { Rectangle().fill(AppTheme.line).frame(height: 2) }
         .sheet(isPresented: $showStyles) {
-            FurnitureCatalogPicker(selectedStyleID: styleID, failureMessage: failureMessage) { id in
+            FurnitureCatalogPicker(selectedStyleID: styleID, role:container.furnitureRole, failureMessage: failureMessage) { id in
                 onAction(.style(id))
             }
             .presentationDetents([.medium, .large])
         }
+        .confirmationDialog("删除这件家具？",isPresented:$showDeleteConfirmation,titleVisibility:.visible) {
+            Button("删除",role:.destructive) { _=onAction(.delete) }
+        } message: {
+            Text("其中的物品会移到未分类，桌面上的摆件会保留在待布置区。")
+        }
     }
 
     private func nudge(_ title:String,_ symbol:String,x:Int,y:Int) -> some View {
-        actionButton(title+"一格",symbol:symbol) {
-            _=onAction(.move(.init(x:container.gridX+x,y:container.gridY+y)))
+        actionButton(title+(container.surfaceAttachment == nil ? "一格":"微调"),symbol:symbol) {
+            if container.surfaceAttachment != nil { _=onAction(.moveSurface(x:x,y:y)) }
+            else { _=onAction(.move(.init(x:container.gridX+x,y:container.gridY+y))) }
         }
     }
 

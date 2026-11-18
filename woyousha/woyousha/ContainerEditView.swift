@@ -15,10 +15,11 @@ struct ContainerEditView: View {
 
     /// 未手选造型的新容器按名称提供预览；旧图标仅用来兼容历史容器。
     private var previewStyleID: String {
-        FurnitureConfig.styleID(
+        let matched=FurnitureConfig.styleID(
             name: name, icon: containerToEdit?.icon ?? FurnitureConfig.defaultIcon,
             savedID: selectedFurnitureImage
         )
+        return containerToEdit != nil || HouseFurnitureAttributes.role(matched) == .container ? matched:"zhixiang"
     }
 
     var body: some View {
@@ -69,7 +70,7 @@ struct ContainerEditView: View {
                 }
             }
             .sheet(isPresented: $showsFurnitureCatalog) {
-                FurnitureCatalogPicker(selectedStyleID: previewStyleID, dismissOnSelection: true) { id in
+                FurnitureCatalogPicker(selectedStyleID: previewStyleID, dismissOnSelection: true, role:.container) { id in
                     selectFurniture(id)
                     return true
                 }
@@ -151,7 +152,7 @@ struct ContainerEditView: View {
             )
             dismiss()
         } catch {
-            errorMessage = (error as? HouseRuleError)?.localizedDescription ?? "容器没有保存成功，请重试。"
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "容器没有保存成功，请重试。"
         }
     }
 }

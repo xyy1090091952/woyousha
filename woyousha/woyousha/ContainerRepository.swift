@@ -10,18 +10,24 @@ enum ContainerRepository {
         guard !trimmedName.isEmpty else {
             throw ValidationError.invalidName
         }
-        let styleID = FurnitureConfig.styleID(
+        var styleID = FurnitureConfig.styleID(
             name: trimmedName, icon: container?.icon ?? FurnitureConfig.defaultIcon, savedID: furnitureImage
         )
+        let oldID=container?.resolvedStyleID
+        if HouseFurnitureAttributes.role(styleID) == .decorative,oldID != styleID {
+            if !(container?.items?.isEmpty ?? true) { throw FurnitureUseError.containsItems }
+            // 新建收纳容器的自动名称若命中装饰造型，使用纸箱。
+            if furnitureImage == nil { styleID="zhixiang" } else { throw FurnitureUseError.decorativeTarget }
+        }
         let metrics=HouseFurnitureCatalog.furniture(styleID,mirrored:container?.isMirrored ?? false)
         // 编辑收纳容器也要遵守家园占地，不能从编辑页绕过家具碰撞校验。
         if let container,container.isPlaced,container.usesGridPlacement {
             let all=try context.fetch(FetchDescriptor<Container>())
-            try HousePlacementRules.validate(cell:.init(x:container.gridX,y:container.gridY),footprint:metrics.footprint,
-                layer:HouseFurnitureCatalog.layer(for:styleID),outdoors:HouseFurnitureCatalog.outdoors(styleID),
-                layout:HouseLayoutStore.shared.layout,
-                occupants:HouseFurnitureCatalog.occupants(containers:all,decorations:RoomDecorationStore.shared.decorations),
-                excluding:container.id.uuidString)
+            try HouseStackingRules.validatePlacement(
+                .init(id:container.id.uuidString,source:.furniture(styleID),cell:.init(x:container.gridX,y:container.gridY),
+                      mirrored:container.isMirrored,attachment:container.surfaceAttachment),
+                among:HouseStackingRules.snapshots(containers:all,decorations:RoomDecorationStore.shared.decorations),
+                layout:HouseLayoutStore.shared.layout)
         }
         // 先提交已有变更，再进行本次同步事务。失败回滚不会影响此前的收纳操作。
         try context.save()

@@ -38,13 +38,18 @@ struct ItemDraft {
 
 @MainActor
 enum ItemRepository {
-    enum ValidationError: Error { case invalidName, invalidQuantity }
+    enum ValidationError: Error { case invalidName, invalidQuantity, missingPhoto }
 
     static func save(_ draft: ItemDraft, editing item: Item?, in context: ModelContext) throws {
         guard !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ValidationError.invalidName
         }
         guard ItemLimits.quantityRange.contains(draft.quantity) else { throw ValidationError.invalidQuantity }
+        // 与页面的必填规则一致；绕过按钮直接调用仓库也不能保存无照片的物品。
+        guard let imageData = draft.imageData, !imageData.isEmpty else { throw ValidationError.missingPhoto }
+        // 普通编辑可以保留旧归属，新收纳只允许选择真正的容器。
+        if let destination=draft.container, !destination.canReceiveItems,
+           item?.container?.id != destination.id { throw FurnitureUseError.decorativeTarget }
         let target = item ?? Item()
         let previous = ItemDraft(item: target)
         let previousDate = target.updatedDate

@@ -88,23 +88,11 @@ struct AddItemView: View {
     }
 
     private var capturePage: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("先给它拍张照")
-                        .font(.system(.title2, design: .rounded, weight: .bold))
-                    Text("让物品完整入镜，拍好后再记下名字。")
-                        .font(.subheadline).foregroundStyle(AppTheme.secondaryText)
-                }
-                CameraView(camera: camera, isActive: isOnCapturePage && !showPhotoPicker)
-                    .aspectRatio(camera.photoAspectRatio, contentMode: .fit)
-                    .frame(maxWidth: CameraSettings.maximumPreviewWidth)
-                    .frame(maxWidth: .infinity)
-                Text("照片会自动做成物品贴纸")
-                    .font(.caption).foregroundStyle(AppTheme.secondaryText)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(AppTheme.Layout.pagePadding)
+        GeometryReader { geometry in
+            let size = CameraSettings.previewSize(in: geometry.size, aspectRatio: camera.photoAspectRatio)
+            CameraView(camera: camera, isActive: isOnCapturePage && !showPhotoPicker)
+                .frame(width: size.width, height: size.height)
+                .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .background(AppTheme.background)
         .foregroundStyle(AppTheme.text)
@@ -113,7 +101,7 @@ struct AddItemView: View {
         .toolbarBackground(AppTheme.background, for: .navigationBar)
         .toolbar { cancelButton }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 12) {
+            HStack(spacing: 12) {
                 Button { camera.capture() } label: {
                     HStack(spacing: 8) {
                         if camera.isCapturing { ProgressView().tint(AppTheme.onAccent) }
@@ -123,18 +111,11 @@ struct AddItemView: View {
                 }
                 .buttonStyle(AppButtonStyle())
                 .disabled(!camera.canUseShutter)
-                HStack {
-                    Button { pickPhoto() } label: {
-                        Label("从相册选", systemImage: "photo.on.rectangle")
-                    }
-                    Spacer()
-                    Button(isEditing ? "返回信息" : "跳过拍照") {
-                        if isEditing { isRetakingForEdit = false }
-                        else { showsDetails = true }
-                    }
+                Button { pickPhoto() } label: {
+                    Label("相册", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity)
                 }
-                .font(.subheadline.weight(.semibold))
-                .frame(minHeight: 44)
+                .buttonStyle(AppButtonStyle(isPrimary: false))
                 .disabled(camera.isCapturing)
             }
             .padding(.horizontal, AppTheme.Layout.pagePadding)

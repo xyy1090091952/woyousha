@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// 信息页只编辑草稿。新增只需名称，数量和备注选填；旧物品的存放信息仍可维护。
+/// 信息页只编辑草稿。照片和名称必填，数量和备注选填；旧物品的存放信息仍可维护。
 struct ItemInformationPage: View {
     @Bindable var editor: ItemEditorModel
     let isEditing: Bool
@@ -44,7 +44,9 @@ struct ItemInformationPage: View {
                     AppSection("放在哪里") {
                         Picker("存放容器", selection: $editor.draft.container) {
                             Text("未分类").tag(Optional<Container>.none)
-                            ForEach(containers) { Text($0.name).tag(Optional($0)) }
+                            ForEach(containers.filter { $0.canReceiveItems || $0.id == editor.draft.container?.id }) {
+                                Text($0.name + ($0.canReceiveItems ? "" : " · 原有物品")).tag(Optional($0))
+                            }
                         }
                         Divider().overlay(AppTheme.line)
                         TextField("具体位置，例如：第二层", text: $editor.draft.location)
@@ -86,16 +88,18 @@ struct ItemInformationPage: View {
     }
 
     private var saveHint: String {
+        if editor.isProcessing { return "贴纸正在处理，完成后就可以保存" }
+        if !editor.hasPhoto { return "请先拍照或从相册添加照片" }
         if editor.draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "填写名称后就可以保存"
         }
-        if editor.isProcessing { return "贴纸正在处理，完成后就可以保存" }
         return isEditing ? "修改只在保存后生效" : "会放入「未分类」"
     }
 
     private var photoSection: some View {
         VStack(spacing: 10) {
-            ItemPhotoStage(image: editor.image, height: AppTheme.Layout.photoHeight)
+            ItemPhotoStage(image: editor.image, height: AppTheme.Layout.photoHeight,
+                           emptySubtitle: "照片为必填，请先拍照或从相册选择")
                 .overlay(alignment: .bottom) {
                     if editor.isProcessing {
                         HStack(spacing: 10) {
@@ -113,10 +117,6 @@ struct ItemInformationPage: View {
                     }
                 }
                 Button(action: onPickPhoto) { Label("更换照片", systemImage: "photo.on.rectangle") }
-                Spacer(minLength: 0)
-                if editor.image != nil {
-                    Button("移除") { editor.removePhoto() }.accessibilityLabel("移除照片")
-                }
             }
             .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
             if editor.processingIsTakingLong, editor.canKeepOriginalPhoto {

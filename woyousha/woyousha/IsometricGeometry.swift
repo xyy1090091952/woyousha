@@ -3,7 +3,7 @@ import CoreGraphics
 
 /// 所有房间和家具共用 2:1 等轴投影：两条水平轴分别向左下、右下倾斜。
 /// z 表示高度。这里仅计算 2D 像素，不依赖 3D 引擎或 WebView。
-nonisolated struct IsoPoint: Sendable {
+nonisolated struct IsoPoint: Sendable, Hashable {
     var x: Double
     var y: Double
     var z: Double

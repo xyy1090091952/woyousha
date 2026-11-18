@@ -6,18 +6,20 @@ struct FurnitureCatalogPicker: View {
     var title = "选择家具造型"
     var dismissOnSelection = false
     var initialQuery = FurnitureCatalogQuery()
+    var role: FurnitureRole? = nil
     var failureMessage: () -> String
     let onSelect: (String) -> Bool
 
     /// 初始条件也供原生预览使用，不会写入用户偏好或改变房间数据。
     init(selectedStyleID: String? = nil, title: String = "选择家具造型",
-         dismissOnSelection: Bool = false, initialQuery: FurnitureCatalogQuery = FurnitureCatalogQuery(),
+         dismissOnSelection: Bool = false, initialQuery: FurnitureCatalogQuery = FurnitureCatalogQuery(), role: FurnitureRole? = nil,
          failureMessage: @escaping () -> String = { "请再试一次。" },
          onSelect: @escaping (String) -> Bool) {
         self.selectedStyleID = selectedStyleID
         self.title = title
         self.dismissOnSelection = dismissOnSelection
         self.initialQuery = initialQuery
+        self.role = role
         self.failureMessage = failureMessage
         self.onSelect = onSelect
     }
@@ -25,7 +27,7 @@ struct FurnitureCatalogPicker: View {
     var body: some View {
         CatalogPickerSheet(
             title: title, itemUnit: "款家具", searchPrompt: "搜索名称或用途，如露营、晾衣",
-            entries: FurnitureConfig.all, initialQuery: initialQuery,
+            entries: FurnitureConfig.all.filter { role == nil || $0.role == role }, initialQuery: initialQuery,
             tabOf: \.tab, nameOf: \.name, searchTextOf: \.catalogSearchText,
             isSelected: { $0.imageName == selectedStyleID },
             dismissOnSelection: dismissOnSelection,

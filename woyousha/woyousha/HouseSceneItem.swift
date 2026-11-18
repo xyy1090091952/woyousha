@@ -17,6 +17,9 @@ nonisolated struct HouseSceneItem: Hashable {
     let source: Source
     var cell: HouseCell
     var mirrored: Bool = false
+    var attachment: HouseSurfaceAttachment? = nil
+    var isPlaced: Bool = true
+    var resolvedOrigin: IsoPoint? = nil
 
     var layer: HousePlacementLayer {
         switch source {
@@ -30,7 +33,12 @@ nonisolated struct HouseSceneItem: Hashable {
         case .decoration(let kind): return HouseFurnitureCatalog.decoration(kind,mirrored:mirrored)
         }
     }
-    @MainActor var visualHeight: Double { (layer == .wall ? 18:0.2)+metrics.size.z }
+    @MainActor var worldOrigin: IsoPoint { resolvedOrigin ?? metrics.origin(at:cell,wall:layer == .wall) }
+    /// 同一张桌面内微调也必须改变缓存键，避免旧图片覆盖新位置。
+    @MainActor var renderSignature: String {
+        "\(id):\(source):\(cell.x):\(cell.y):\(mirrored):\(String(describing:attachment)):\(worldOrigin)"
+    }
+    @MainActor var visualHeight: Double { worldOrigin.z+metrics.minimum.z+metrics.size.z }
     @MainActor func worldMesh(style:String,owner:Int) -> IsoMesh {
         // 异常历史坐标不参与栅格化，原记录仍保留，避免巨大坐标让像素取整溢出。
         let limit=HouseGridConfig.plotSize*3
@@ -40,7 +48,7 @@ nonisolated struct HouseSceneItem: Hashable {
         case .furniture(let id): raw=HouseFurnitureCatalog.furnitureMesh(id,mirrored:mirrored)
         case .decoration(let kind): raw=HouseFurnitureCatalog.decorationMesh(kind,style:style,mirrored:mirrored)
         }
-        let origin=metrics.origin(at:cell,wall:layer == .wall)
+        let origin=worldOrigin
         return IsoMesh(faces:raw.faces.map { original in
             var face=original
             face.points=face.points.map { $0.offset(origin) }
@@ -62,6 +70,6 @@ nonisolated struct HouseSceneItem: Hashable {
             key="decoration:\(kind):\(style):\(mirrored)"
             raw=HouseFurnitureCatalog.decorationMesh(kind,style:style,mirrored:mirrored)
         }
-        return .init(key:key,mesh:raw,origin:metrics.origin(at:cell,wall:layer == .wall),owner:owner)
+        return .init(key:key,mesh:raw,origin:worldOrigin,owner:owner)
     }
 }

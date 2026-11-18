@@ -12,6 +12,7 @@ final class RoomDecorationStore {
 
     enum Action {
         case move(HouseCell), place(HouseCell), mirror, store, delete
+        case attach(HouseSurfaceAttachment), moveSurface(x:Int,y:Int)
     }
 
     init(storage: UserDefaults = .standard) {
@@ -39,16 +40,23 @@ final class RoomDecorationStore {
         case .move(let cell),.place(let cell):
             updated[index].gridX=cell.x;updated[index].gridY=cell.y
             updated[index].isPlaced=true
+            updated[index].surfaceAttachment=nil
+        case .attach(let attachment):
+            updated[index].surfaceAttachment=attachment;updated[index].isPlaced=true
+        case .moveSurface(let x,let y):
+            guard let attachment=updated[index].surfaceAttachment else { throw HouseStackingError.missingSupport }
+            updated[index].surfaceAttachment=try HouseStackingRules.nudged(attachment,x:x,y:y,
+                among:HouseStackingRules.snapshots(containers:containers,decorations:decorations))
         case .mirror: updated[index].isMirrored.toggle()
         case .store: updated[index].isPlaced=false
         case .delete: updated.remove(at: index)
         }
         if let target=updated.first(where:{$0.id == id}),target.isPlaced {
             guard let x=target.gridX,let y=target.gridY else { throw HouseRuleError.noSpace }
-            let model=HouseFurnitureCatalog.decoration(target.kind,mirrored:target.isMirrored)
-            try HousePlacementRules.validate(cell:.init(x:x,y:y),footprint:model.footprint,
-                layer:HouseFurnitureCatalog.layer(for:target.kind),layout:layout,
-                occupants:HouseFurnitureCatalog.occupants(containers:containers,decorations:decorations),excluding:id)
+            let proposed=HouseSceneItem(id:id,source:.decoration(target.kind),cell:.init(x:x,y:y),
+                mirrored:target.isMirrored,attachment:target.surfaceAttachment)
+            try HouseStackingRules.validatePlacement(proposed,
+                among:HouseStackingRules.snapshots(containers:containers,decorations:updated),layout:layout)
         }
         if let index=updated.firstIndex(where:{$0.id == id}) { updated[index].scale=1 }
         try commit(updated)

@@ -7,6 +7,10 @@ nonisolated enum IsometricFurniture {
     static let dark = PixelPalette.ink
 
     static func model(_ id: String) -> IsoMesh {
+        HouseFurnitureAttributes.resized(rawModel(id),by:HouseFurnitureAttributes.scale(id))
+    }
+
+    private static func rawModel(_ id: String) -> IsoMesh {
         if let expanded = IsometricExpandedFurniture.model(id) { return expanded }
         if let household = IsometricHouseholdFurniture.model(id) { return household }
         var m=IsoMesh()

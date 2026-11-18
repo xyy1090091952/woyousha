@@ -3,6 +3,10 @@ import Foundation
 /// 装饰模型以放置锚点为原点，移动和缩放不会改变与地面/墙面的等轴关系。
 nonisolated enum IsometricDecoration {
     static func model(_ kind: RoomDecoration.Kind, style: String) -> IsoMesh {
+        HouseFurnitureAttributes.resized(rawModel(kind,style:style),by:HouseFurnitureAttributes.scale(kind))
+    }
+
+    private static func rawModel(_ kind: RoomDecoration.Kind, style: String) -> IsoMesh {
         var m = IsoMesh()
         switch kind {
         case .plant:

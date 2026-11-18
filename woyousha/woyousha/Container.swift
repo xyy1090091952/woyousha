@@ -29,6 +29,10 @@ final class Container {
     var gridDepth: Int = 1
     /// 旧贴纸数据默认为 false；升级成功后以 gridX/gridY 为唯一摆放位置。
     var usesGridPlacement: Bool = false
+    /// 桌面相对位置独立保存；旧存档没有支撑家具时继续放在地面。
+    var surfaceSupportID: String? = nil
+    var surfaceU: Double = 0.5
+    var surfaceV: Double = 0.5
     // 是否已放置在“家”中
     var isPlaced: Bool = false
     // 关联的家具图片名称 (如果是自定义图片)

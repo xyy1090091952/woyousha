@@ -39,6 +39,11 @@ nonisolated struct HouseSceneMetrics: Sendable {
     func center(of cell: HouseCell) -> CGPoint {
         screen(.init((Double(cell.x)+0.5)*HouseGridConfig.tile,(Double(cell.y)+0.5)*HouseGridConfig.tile,0))
     }
+    func worldPoint(_ screen:CGPoint,z:Double = 0) -> IsoPoint {
+        let dx=(screen.x/imageFactor-projection.origin.x)/projection.scale
+        let sum=2*((((screen.y-topInset)/imageFactor-projection.origin.y)/projection.scale)+z)
+        return .init((sum+dx)/2,(sum-dx)/2,z)
+    }
     func delta(_ screen: CGSize) -> HouseCell {
         guard screen.width.isFinite,screen.height.isFinite else { return .init(x:0,y:0) }
         let x=screen.width/worldFactor,y=screen.height/worldFactor
@@ -92,36 +97,8 @@ nonisolated enum HouseSceneRenderer {
                       occupants: [HouseOccupant] = []) -> IsoMesh {
         var mesh=IsoMesh()
         let tile=HouseGridConfig.tile
-        let floor=layout.floorCells, occupied=occupants.reduce(into:Set<HouseCell>()){$0.formUnion($1.cells)}
         let green=style == "home2"
-        let lawn: UInt32=green ? 0xA5BA75:0xB7C784
-        let ground: UInt32=0x9B8453
-        mesh.box(Double(metrics.minX)*tile,Double(metrics.minY)*tile,-6,
-                 Double(metrics.maxX-metrics.minX)*tile,Double(metrics.maxY-metrics.minY)*tile,5,ground,material:.wood)
-        // 庭院的砖石步道通到客厅前侧，房间覆盖的部分不会再画草地或步道。
-        let entrance=layout.rooms[0]
-        let pathX=entrance.x+entrance.width/2
-        for y in metrics.minY..<metrics.maxY {
-            for x in metrics.minX..<metrics.maxX {
-                let cell=HouseCell(x:x,y:y)
-                guard !floor.contains(cell) else { continue }
-                // 草地是大平面，用相近色和稀疏纹理；树冠才使用较丰富的叶片材质。
-                let tint=IsoColor.shade(lawn,0.98+IsoPixelStyle.hash(x,y,51)*0.04)
-                mesh.top(Double(x)*tile,Double(y)*tile,-0.8,tile,tile,tint,material:.plaster)
-                if abs(x-pathX) <= 0 && y >= entrance.y+entrance.depth {
-                    mesh.roundedBox(Double(x)*tile+1,Double(y)*tile+1,-0.5,tile-2,tile-2,1,
-                                    radius:2,color:0xE9D9B3)
-                } else if IsoPixelStyle.hash(x,y,7)>0.965 {
-                    mesh.top(Double(x)*tile+6,Double(y)*tile+5,-0.7,3,2,0xEDCE89)
-                }
-            }
-        }
-        let treeSpots=[HouseCell(x:1,y:5),.init(x:3,y:1),.init(x:18,y:2),.init(x:20,y:16),.init(x:5,y:20)]
-        for cell in treeSpots where cell.x >= metrics.minX && cell.x < metrics.maxX && cell.y >= metrics.minY && cell.y < metrics.maxY {
-            let area=HouseFootprint(width:2,depth:2).cells(at:cell)
-            guard area.isDisjoint(with:floor),area.isDisjoint(with:occupied) else { continue }
-            tree(&mesh,x:(Double(cell.x)+0.8)*tile,y:(Double(cell.y)+0.8)*tile)
-        }
+        HouseYardScene.appendGround(to:&mesh,layout:layout,metrics:metrics,style:style)
         // 围栏只放在远侧边缘，不挡住屋内拖动和房间入口。
         for x in stride(from:metrics.minX,to:metrics.maxX,by:2) {
             fence(&mesh,x:Double(x)*tile,y:Double(metrics.minY)*tile,alongX:true)
@@ -184,12 +161,6 @@ nonisolated enum HouseSceneRenderer {
         }
     }
 
-    private static func tree(_ mesh: inout IsoMesh,x:Double,y:Double) {
-        mesh.cylinder(x,y,0,radius:2,height:22,color:0xAC7C4D,sides:6)
-        for (dx,dy,z,r) in [(-5.0,0.0,23.0,9.0),(5,3,25,10),(0,-2,33,11)] {
-            IsoCatalogParts.ellipsoid(&mesh,center:.init(x+dx,y+dy,z),radii:.init(r,r,9),color:z>30 ? 0x91B465:0x71974E)
-        }
-    }
     private static func fence(_ mesh: inout IsoMesh,x:Double,y:Double,alongX:Bool) {
         mesh.box(x,y,0,2,2,12,0xDCC29A,material:.wood)
         for z in [4.0,9] {
@@ -203,7 +174,7 @@ nonisolated enum HouseSceneRenderer {
                        occupants: [HouseOccupant] = [],items:[HouseSceneItem] = [],
                        selectedIDs:Set<String> = [],preview:HousePlacementPreview? = nil) -> HouseRenderJob {
         let architectureKey=HouseGeometryCache.key(layout:layout,metrics:metrics,style:style,occupants:occupants)
-        let objects=items.map {"\($0.id):\($0.source):\($0.cell.x):\($0.cell.y):\($0.mirrored)"}.joined(separator:"|")
+        let objects=items.map(\.renderSignature).joined(separator:"|")
         let baseKey=architectureKey+objects+"\(metrics.width),\(metrics.height),\(metrics.projection.origin)"
         let selection=Set(items.enumerated().compactMap { selectedIDs.contains($0.element.id) ? $0.offset+2:nil })
         if var cached=HousePreparedSceneCache.job(for:baseKey) {
@@ -265,10 +236,7 @@ nonisolated enum HouseSceneRenderer {
         let rooms=layout.rooms.map {
             "\($0.id):\($0.kind):\($0.x):\($0.y):\($0.width):\($0.depth):\($0.floorFinish?.rawValue ?? ""):\($0.wallFinish?.rawValue ?? "")"
         }.joined(separator:"|")
-        let occupied=occupants.reduce(into:Set<HouseCell>()) {$0.formUnion($1.cells)}
-        let trees=[HouseCell(x:1,y:5),.init(x:3,y:1),.init(x:18,y:2),.init(x:20,y:16),.init(x:5,y:20)]
-            .map { HouseFootprint(width:2,depth:2).cells(at:$0).isDisjoint(with:occupied) ? "1":"0" }.joined()
-        return "yard:\(style):\(rooms):\(trees):\(metrics.minX),\(metrics.minY),\(metrics.maxX),\(metrics.maxY)"
+        return "yard:\(HouseYardScene.revision):\(style):\(rooms):\(metrics.minX),\(metrics.minY),\(metrics.maxX),\(metrics.maxY)"
     }
     static func mesh(for key:String,create:() -> IsoMesh) -> IsoMesh {
         if let entry=entries.first(where:{$0.0 == key}) { return entry.1 }

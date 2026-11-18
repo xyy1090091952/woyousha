@@ -42,6 +42,8 @@ struct ContentView: View {
     
     // 控制编辑容器页面的显示
     @State private var showEditContainerSheet = false
+    @State private var transferError:String?
+    private var inventoryContainers:[Container] { containers.filter(\.appearsInInventory) }
     
     // 正在拖拽的物品 ID 集合
     @State private var draggingItems: Set<String> = []
@@ -112,6 +114,9 @@ struct ContentView: View {
             .sheet(isPresented: $showAddContainerSheet) {
                 ContainerEditView()
             }
+            .alert("收纳未完成",isPresented:Binding(get:{transferError != nil},set:{if !$0 {transferError=nil}})) {
+                Button("知道了",role:.cancel) { transferError=nil }
+            } message: { Text(transferError ?? "") }
             .sheet(isPresented: $showEditContainerSheet) {
                 if case .specific(let container) = selectedFilter {
                     ContainerEditView(containerToEdit: container) {
@@ -144,6 +149,10 @@ struct ContentView: View {
                     }
                 }
             }
+            .onChange(of:inventoryContainers.map(\.id)) { _,ids in
+                // 原有误收纳清空后退出已隐藏的 tab，避免列表停在没有入口的筛选上。
+                if case .specific(let target)=selectedFilter,!ids.contains(target.id) { selectedFilter = .all }
+            }
             .onChange(of: selectedContainerID) { _, newValue in
                 // 防止循环触发
                 guard !isUpdatingFromFilter else { return }
@@ -156,7 +165,7 @@ struct ContentView: View {
                 // 此时不应该触发 selectedFilter = .all
                 
                 if let id = newValue,
-                   let container = containers.first(where: { $0.id.uuidString == id }) {
+                   let container = inventoryContainers.first(where: { $0.id.uuidString == id }) {
                     withAnimation {
                         selectedFilter = .specific(container)
                     }
@@ -244,7 +253,7 @@ struct ContentView: View {
                 Text("我的小天地")
                     .font(.system(.title2, design: .rounded, weight: .heavy))
                     .foregroundStyle(AppTheme.text)
-                Text("\(allItems.count) 件物品 · \(containers.count) 个容器")
+                Text("\(allItems.count) 件物品 · \(containers.filter(\.canReceiveItems).count) 个容器")
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
             }
@@ -326,14 +335,13 @@ struct ContentView: View {
                 unclassifiedContainerButton
                 
                 // 现有容器列表
-                ForEach(containers) { container in
+                ForEach(inventoryContainers) { container in
                     ContainerTabItem(
                         container: container,
                         isSelected: selectedFilter == .specific(container)
                     ) { items in
                         // 处理 Drop 逻辑
                         handleDrop(items: items, to: container)
-                        return true
                     }
                     .onTapGesture {
                         withAnimation {
@@ -399,7 +407,6 @@ struct ContentView: View {
         }
         .dropDestination(for: String.self) { items, location in
             handleDrop(items: items, to: nil)
-            return true
         } isTargeted: { _ in }
     }
     
@@ -416,7 +423,7 @@ struct ContentView: View {
     }
     
     // 处理拖拽放置逻辑
-    private func handleDrop(items: [String], to targetContainer: Container?) {
+    private func handleDrop(items: [String], to targetContainer: Container?) -> Bool {
         var idsToProcess = Set(items.flatMap { $0.split(separator: ",").map(String.init) })
         
         // 如果拖拽的物品在选中列表中，则同时处理所有选中的物品
@@ -427,27 +434,19 @@ struct ContentView: View {
             }
         }
         
-        var movedCount = 0
-        for id in idsToProcess {
-            if let item = allItems.first(where: { $0.id.uuidString == id }) {
-                withAnimation {
-                    item.container = targetContainer
-                    item.updatedDate = Date()
-                }
-                movedCount += 1
-            }
-        }
-        
-        // 如果有移动，触发震动反馈
-        if movedCount > 0 {
+        do {
+            let movedCount=try ItemTransferRepository.move(ids:Set(idsToProcess.compactMap(UUID.init(uuidString:))),
+                to:targetContainer,in:modelContext)
+            guard movedCount>0 else { return false }
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
-        }
+        } catch { transferError=error.localizedDescription;return false }
         
         // 操作完成后清空选中状态
         selectedItems.removeAll()
         // 确保拖拽状态也清除 (虽然 onDragEnd 也会清除，但这里是 Drop 成功的回调，双重保险)
         draggingItems.removeAll()
+        return true
     }
     
     private var inventoryHeading: some View {
@@ -777,7 +776,7 @@ struct ContentView: View {
                 ("冰箱", "refrigerator"),
                 ("镜柜", "mirror.side.left"), // 近似图标
                 ("背包", "backpack"),
-                ("墙壁", "wall.art.top") // 近似图标
+                ("书架", "books.vertical")
             ]
             
             for (name, icon) in defaults {
@@ -837,7 +836,7 @@ struct ContainerTabItem: View {
                 .scaleEffect(isTargeted ? 1.2 : 1.0)
                 .animation(.spring, value: isTargeted)
             
-            Text(container.name)
+            Text(container.name + (container.canReceiveItems ? "" : " · 原有物品"))
                 .font(.system(.caption, design: .rounded, weight: .bold))
                 .foregroundStyle(isSelected ? AppTheme.text : AppTheme.secondaryText)
                 .lineLimit(1)
@@ -873,7 +872,7 @@ struct ContainerTabItem: View {
             return onDrop(allItems)
         } isTargeted: { targeted in
             withAnimation {
-                isTargeted = targeted
+                isTargeted = targeted && container.canReceiveItems
             }
         }
     }

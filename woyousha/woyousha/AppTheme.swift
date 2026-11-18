@@ -79,7 +79,7 @@ struct ItemPhotoStage: View {
     let image: UIImage?
     var height: CGFloat = AppTheme.Layout.photoHeight
     var emptyTitle = "给物品拍张照"
-    var emptySubtitle = "也可以先填写信息"
+    var emptySubtitle = "请添加一张物品照片"
 
     var body: some View {
         ZStack {

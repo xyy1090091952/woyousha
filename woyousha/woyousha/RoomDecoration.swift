@@ -15,6 +15,8 @@ nonisolated struct RoomDecoration: Identifiable, Codable, Equatable {
     // Optional 可以读取没有格子字段的旧 JSON，首次升级再安全对齐。
     var gridX: Int? = nil
     var gridY: Int? = nil
+    /// Optional 保证没有叠放字段的旧 JSON 仍可直接读取。
+    var surfaceAttachment: HouseSurfaceAttachment? = nil
     var name: String { kind.title }
 
     enum Kind: String, Codable, CaseIterable {

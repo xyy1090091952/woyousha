@@ -38,13 +38,14 @@ final class ItemEditorModel {
         photoState == .loading || photoState == .separating || photoState == .finishing
     }
     var canKeepOriginalPhoto: Bool { isProcessing && originalImage != nil }
+    var hasPhoto: Bool { image != nil }
     var canSave: Bool {
-        !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isProcessing && !isSaving
+        hasPhoto && !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isProcessing && !isSaving
     }
 
     var photoMessage: String {
         switch photoState {
-        case .empty: return "照片选填，拍照后会自动制作贴纸"
+        case .empty: return "请先拍照或从相册添加照片"
         case .loading: return "正在读取照片…"
         case .separating: return "正在分离物品主体…"
         case .finishing: return "正在生成贴纸白边…"
@@ -122,6 +123,10 @@ final class ItemEditorModel {
     }
 
     func save(in context: ModelContext) async -> Bool {
+        guard hasPhoto else {
+            errorMessage = "物品需要一张照片，请先拍照或从相册添加。"
+            return false
+        }
         guard canSave else { return false }
         isSaving = true
         defer { isSaving = false }

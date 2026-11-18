@@ -30,6 +30,9 @@ struct HomeDecorationView: View {
     @State private var draggingContainerID:String?
     @State private var draggingDecorationID:String?
     @State private var candidate:HouseCell?
+    @State private var candidateAttachment:HouseSurfaceAttachment?
+    @State private var dragOrigin:HouseSceneItem?
+    @State private var dragProjection:HouseSceneMetrics?
     @State private var notice:String?
     @State private var draftRoom:HouseRoom?
     @State private var roomDragOrigin:HouseCell?
@@ -41,7 +44,7 @@ struct HomeDecorationView: View {
     @State private var targetedContainerID:String?
 
     private enum Mode:String,CaseIterable { case furnish="布置",build="建房" }
-    private enum DrawerCategory:String,CaseIterable { case furniture="家具",decorations="装饰" }
+    private enum DrawerCategory:String,CaseIterable { case furniture="容器家具",decorations="装饰家具" }
 
     /// 可注入独立存档用于原生预览，正式页面仍使用同一份家园。
     init(isPreviewMode:Bool=false,isEditing:Bool=false,selectedContainerID:Binding<String?> = .constant(nil),
@@ -56,7 +59,7 @@ struct HomeDecorationView: View {
         HouseFurnitureCatalog.occupants(containers:containers,decorations:decorations.decorations)
     }
     private var metrics:HouseSceneMetrics {
-        .init(layout:displayLayout,occupants:occupants,showsPlot:isEditing && mode == .build,
+        dragProjection ?? .init(layout:displayLayout,occupants:occupants,showsPlot:isEditing && mode == .build,
               ceilingHeight:sceneItems.map(\.visualHeight).max() ?? HouseGridConfig.wallHeight)
     }
     private var displayLayout:HouseLayout {
@@ -64,14 +67,17 @@ struct HomeDecorationView: View {
         return house.layout
     }
     private var sceneItems:[HouseSceneItem] {
-        containers.filter {$0.isPlaced && $0.usesGridPlacement}.map {
-            HouseSceneItem(id:$0.id.uuidString,source:.furniture(styleID($0)),cell:furnitureCell($0),mirrored:$0.isMirrored)
-        } + decorations.decorations.filter {$0.isPlaced && $0.gridX != nil}.map {
-            HouseSceneItem(id:$0.id,source:.decoration($0.kind),cell:decorationCell($0),mirrored:$0.isMirrored)
-        }
+        HouseStackingRules.resolve(baseSnapshots.map { original in
+            var item=original
+            if item.id == draggingContainerID || item.id == draggingDecorationID {
+                item.attachment=candidateAttachment
+                if let candidate { item.cell=candidate }
+            }
+            return item
+        })
     }
-    private var sceneOccupants:[HouseOccupant] {
-        sceneItems.map { HouseOccupant(id:$0.id,cell:$0.cell,footprint:$0.metrics.footprint,layer:$0.layer) }
+    private var baseSnapshots:[HouseSceneItem] {
+        HouseStackingRules.snapshots(containers:containers,decorations:decorations.decorations)
     }
     private var sceneSelection:Set<String> {
         Set([selectedContainerID,selectedDecorationID,targetedContainerID].compactMap {$0})
@@ -79,6 +85,7 @@ struct HomeDecorationView: View {
     private var placementPreview:HousePlacementPreview? {
         guard isEditing,mode == .furnish,
               let item=sceneItems.first(where:{$0.id == selectedContainerID || $0.id == selectedDecorationID}) else { return nil }
+        guard item.attachment == nil else { return nil }
         let outdoors:Bool
         if case .furniture(let id)=item.source { outdoors=HouseFurnitureCatalog.outdoors(id) } else { outdoors=false }
         return .init(cell:item.cell,footprint:item.metrics.footprint,
@@ -89,6 +96,15 @@ struct HomeDecorationView: View {
     }
     private var selectedDecoration:RoomDecoration? {
         decorations.decorations.first {$0.isPlaced && $0.id == selectedDecorationID}
+    }
+    private var inspectorHeight:CGFloat {
+        if mode == .build { return 320 }
+        let source:HouseSceneItem.Source?
+        if let item=selectedContainer { source = .furniture(styleID(item)) }
+        else if let item=selectedDecoration { source = .decoration(item.kind) }
+        else { source=nil }
+        // 多一行桌面入口时预留高度，小屏仍可滚动，按钮不会被固定面板截掉。
+        return source.map { HouseFurnitureAttributes.canSitOnSurface($0) } == true ? 312:242
     }
     private var draftIssue:String? {
         guard let room=draftRoom else { return nil }
@@ -115,7 +131,7 @@ struct HomeDecorationView: View {
                                 .font(.caption).foregroundStyle(notice == nil ? AppTheme.secondaryText:AppTheme.accentText)
                                 .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,16).padding(.vertical,8)
                             ScrollView { inspector }.disabled(!gridReady)
-                                .frame(height:mode == .build ? 320:242)
+                                .frame(height:inspectorHeight)
                         }.background(AppTheme.surface)
                     }
                 }
@@ -144,13 +160,13 @@ struct HomeDecorationView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for:.resetHomeView)) { _ in resetViewport() }
         .sheet(isPresented:$showsFurnitureCatalog) {
-            FurnitureCatalogPicker(title:"添加家具",dismissOnSelection:true,
-                failureMessage:{notice ?? "没有保存成功，请再试一次。"},onSelect:addFurniture)
+            HouseCatalogPicker(role:.container,roomStyle:currentRoomImage,
+                failureMessage:{notice ?? "没有保存成功，请再试一次。"},onSelect:addCatalogEntry)
                 .presentationDetents([.medium,.large])
         }
         .sheet(isPresented:$showsDecorationCatalog) {
-            DecorationCatalogPicker(roomStyle:currentRoomImage,
-                failureMessage:{notice ?? "没有保存成功，请再试一次。"},onSelect:addDecoration)
+            HouseCatalogPicker(role:.decorative,roomStyle:currentRoomImage,
+                failureMessage:{notice ?? "没有保存成功，请再试一次。"},onSelect:addCatalogEntry)
                 .presentationDetents([.medium,.large])
         }
     }
@@ -183,11 +199,15 @@ struct HomeDecorationView: View {
                 onNew:{draftRoom=house.suggestedRoom();notice=nil},onSave:saveRoom,onDelete:deleteRoom)
         } else if let item=selectedContainer {
             FurnitureInspector(container:item,onAction:{perform($0,on:item)},onClose:{selectedContainerID=nil},
-                failureMessage:{notice ?? "没有保存成功，请再试一次。"})
+                failureMessage:{notice ?? "没有保存成功，请再试一次。"},
+                surfaceOptions:surfaceOptions(id:item.id.uuidString),supportName:supportName(item.surfaceAttachment),
+                onGround:{placeStored(item)})
                 .id(item.id)
         } else if let item=selectedDecoration {
             DecorationInspector(decoration:item,roomStyle:currentRoomImage,
-                onAction:{performDecoration($0,id:item.id)},onClose:{selectedDecorationID=nil}).id(item.id)
+                onAction:{performDecoration($0,id:item.id)},onClose:{selectedDecorationID=nil},
+                surfaceOptions:surfaceOptions(id:item.id),supportName:supportName(item.surfaceAttachment),
+                onGround:{placeStoredDecoration(item)}).id(item.id)
         } else { drawer }
     }
 
@@ -195,12 +215,14 @@ struct HomeDecorationView: View {
         GeometryReader { geometry in
             let fit=min(geometry.size.width/800,geometry.size.height/800)*0.96
             let factor=max(0.01,fit*scale)
-            scene(factor:factor)
-                .frame(width:800,height:800)
-                .scaleEffect(factor)
-                .position(x:geometry.size.width/2+offset.width,y:geometry.size.height/2+offset.height)
+            ZStack {
+                HouseSurroundingsView(metrics:metrics,factor:factor,offset:offset,style:currentRoomImage)
+                scene(factor:factor)
+                    .frame(width:800,height:800)
+                    .scaleEffect(factor)
+                    .position(x:geometry.size.width/2+offset.width,y:geometry.size.height/2+offset.height)
+            }
         }
-        .background(HouseBackdrop())
         .contentShape(Rectangle())
         .gesture(SimultaneousGesture(
             DragGesture(minimumDistance:12)
@@ -223,21 +245,26 @@ struct HomeDecorationView: View {
     private var isMovingObject:Bool { draggingContainerID != nil || draggingDecorationID != nil || isDraggingRoom }
 
     private func scene(factor:Double) -> some View {
-        let m=metrics
+        // 整次刷新只解析一份快照，避免每件家具都重复读取整屋数据。
+        let m=metrics,items=sceneItems
+        let byID=Dictionary(uniqueKeysWithValues:items.map {($0.id,$0)})
+        let occupied=items.filter {$0.attachment == nil}.map {
+            HouseOccupant(id:$0.id,cell:$0.cell,footprint:$0.metrics.footprint,layer:$0.layer)
+        }
         return ZStack {
-            HouseSceneView(layout:displayLayout,metrics:m,style:currentRoomImage,occupants:sceneOccupants,
-                           items:sceneItems,selectedIDs:sceneSelection,preview:placementPreview)
+            HouseSceneView(layout:displayLayout,metrics:m,style:currentRoomImage,occupants:occupied,
+                           items:items,selectedIDs:sceneSelection,preview:placementPreview)
                 .allowsHitTesting(false).zIndex(-1000)
             if isEditing && showsGrid {
                 HouseCellsShape(cells:gridCells,metrics:m).stroke(AppTheme.onAccent.opacity(0.18),lineWidth:0.8)
                     .allowsHitTesting(false).zIndex(-870)
             }
 
-            ForEach(containers.filter {$0.isPlaced && $0.usesGridPlacement}) { item in
-                furniture(item,metrics:m,factor:factor)
+            ForEach(containers.filter {byID[$0.id.uuidString] != nil}) { item in
+                if let snapshot=byID[item.id.uuidString] { furniture(item,snapshot:snapshot,metrics:m,factor:factor) }
             }
-            ForEach(decorations.decorations.filter {$0.isPlaced && $0.gridX != nil}) { item in
-                decoration(item,metrics:m,factor:factor)
+            ForEach(decorations.decorations.filter {byID[$0.id] != nil}) { item in
+                if let snapshot=byID[item.id] { decoration(item,snapshot:snapshot,metrics:m,factor:factor) }
             }
             if mode == .build && isEditing {
                 ForEach(house.layout.rooms) { room in
@@ -274,12 +301,6 @@ struct HomeDecorationView: View {
     private func styleID(_ item:Container) -> String {
         FurnitureConfig.styleID(name:item.name,icon:item.icon,savedID:item.furnitureImageName)
     }
-    private func furnitureCell(_ item:Container) -> HouseCell {
-        draggingContainerID == item.id.uuidString ? (candidate ?? .init(x:item.gridX,y:item.gridY)):.init(x:item.gridX,y:item.gridY)
-    }
-    private func decorationCell(_ item:RoomDecoration) -> HouseCell {
-        draggingDecorationID == item.id ? (candidate ?? .init(x:item.gridX ?? 0,y:item.gridY ?? 0)):.init(x:item.gridX ?? 0,y:item.gridY ?? 0)
-    }
     private func placementIssue(cell:HouseCell,model:HouseModelMetrics,layer:HousePlacementLayer,id:String,outdoors:Bool=false) -> String? {
         do {
             try HousePlacementRules.validate(cell:cell,footprint:model.footprint,layer:layer,outdoors:outdoors,
@@ -288,10 +309,10 @@ struct HomeDecorationView: View {
         } catch { return error.localizedDescription }
     }
 
-    private func furniture(_ item:Container,metrics m:HouseSceneMetrics,factor:Double) -> some View {
+    private func furniture(_ item:Container,snapshot:HouseSceneItem,metrics m:HouseSceneMetrics,factor:Double) -> some View {
         let id=styleID(item),model=HouseFurnitureCatalog.furniture(id,mirrored:item.isMirrored)
-        let cell=furnitureCell(item),layer=HouseFurnitureCatalog.layer(for:id)
-        let p=m.screen(model.origin(at:cell,wall:layer == .wall))
+        let cell=snapshot.cell
+        let p=m.screen(snapshot.worldOrigin)
         return ZStack {
             // 主体由统一深度场景显示；透明交互层继续负责点击、拖动与收纳拖放。
             FurnitureView(container:item,isSelected:selectedContainerID == item.id.uuidString,renderFactor:m.spriteFactor,
@@ -302,18 +323,11 @@ struct HomeDecorationView: View {
                 .position(x:p.x+model.sprite.midX*m.spriteFactor,y:p.y+model.sprite.midY*m.spriteFactor)
                 .gesture(isEditing && gridReady && mode == .furnish ? DragGesture(minimumDistance:6)
                     .onChanged { value in
-                        let delta=m.delta(.init(width:value.translation.width/factor,height:value.translation.height/factor))
-                        let next=HouseCell(x:item.gridX+delta.x,y:item.gridY+delta.y)
-                        // 手指在同一格内移动不重新校验、刷新整屋或修改选择状态。
-                        guard draggingContainerID != item.id.uuidString || candidate != next else { return }
-                        if selectedContainerID != item.id.uuidString { selectedContainerID=item.id.uuidString }
-                        if draggingContainerID != item.id.uuidString { draggingContainerID=item.id.uuidString }
-                        candidate=next
-                        notice=placementIssue(cell:next,model:model,layer:layer,id:item.id.uuidString,outdoors:HouseFurnitureCatalog.outdoors(id))
+                        updateDrag(id:item.id.uuidString,translation:value.translation,metrics:m,factor:factor,isFurniture:true)
                     }.onEnded { _ in
-                        if let candidate { _=perform(.move(candidate),on:item) }
-                        self.candidate=nil
-                        DispatchQueue.main.async { draggingContainerID=nil }
+                        if let attachment=candidateAttachment { _=perform(.attach(attachment),on:item) }
+                        else if let candidate { _=perform(.move(candidate),on:item) }
+                        finishDrag()
                     }:nil)
                 .onTapGesture {
                     selectedContainerID=selectedContainerID == item.id.uuidString ? nil:item.id.uuidString
@@ -322,13 +336,13 @@ struct HomeDecorationView: View {
         }
         .frame(width:800,height:800)
         .allowsHitTesting(!isEditing || mode == .furnish)
-        .zIndex(Double(cell.x+cell.y+model.footprint.width+model.footprint.depth))
+        .zIndex(Double(cell.x+cell.y+model.footprint.width+model.footprint.depth)+(snapshot.attachment == nil ? 0:200))
     }
 
-    private func decoration(_ item:RoomDecoration,metrics m:HouseSceneMetrics,factor:Double) -> some View {
+    private func decoration(_ item:RoomDecoration,snapshot:HouseSceneItem,metrics m:HouseSceneMetrics,factor:Double) -> some View {
         let model=HouseFurnitureCatalog.decoration(item.kind,mirrored:item.isMirrored)
-        let cell=decorationCell(item),layer=HouseFurnitureCatalog.layer(for:item.kind)
-        let p=m.screen(model.origin(at:cell,wall:item.kind.isWallMounted))
+        let cell=snapshot.cell
+        let p=m.screen(snapshot.worldOrigin)
         return ZStack {
             Color.clear
                 .frame(width:model.sprite.width*m.spriteFactor,height:model.sprite.height*m.spriteFactor)
@@ -336,17 +350,11 @@ struct HomeDecorationView: View {
                 .position(x:p.x+model.sprite.midX*m.spriteFactor,y:p.y+model.sprite.midY*m.spriteFactor)
                 .gesture(isEditing && gridReady && mode == .furnish ? DragGesture(minimumDistance:6)
                     .onChanged { value in
-                        let delta=m.delta(.init(width:value.translation.width/factor,height:value.translation.height/factor))
-                        let next=HouseCell(x:(item.gridX ?? 0)+delta.x,y:(item.gridY ?? 0)+delta.y)
-                        guard draggingDecorationID != item.id || candidate != next else { return }
-                        if selectedDecorationID != item.id { selectedDecorationID=item.id }
-                        if draggingDecorationID != item.id { draggingDecorationID=item.id }
-                        candidate=next
-                        notice=placementIssue(cell:next,model:model,layer:layer,id:item.id)
+                        updateDrag(id:item.id,translation:value.translation,metrics:m,factor:factor,isFurniture:false)
                     }.onEnded { _ in
-                        if let candidate { _=performDecoration(.move(candidate),id:item.id) }
-                        self.candidate=nil
-                        DispatchQueue.main.async { draggingDecorationID=nil }
+                        if let attachment=candidateAttachment { _=performDecoration(.attach(attachment),id:item.id) }
+                        else if let candidate { _=performDecoration(.move(candidate),id:item.id) }
+                        finishDrag()
                     }:nil)
                 .onTapGesture {
                     guard isEditing else { return }
@@ -355,7 +363,60 @@ struct HomeDecorationView: View {
         }
         .frame(width:800,height:800)
         .allowsHitTesting(isEditing && mode == .furnish)
-        .zIndex(item.kind.isFloorCovering ? -900:Double(cell.x+cell.y+model.footprint.width+model.footprint.depth)+0.1)
+        .zIndex(item.kind.isFloorCovering ? -900:Double(cell.x+cell.y+model.footprint.width+model.footprint.depth) + 0.1 +
+            (snapshot.attachment == nil ? 0:200))
+    }
+
+    private func updateDrag(id:String,translation:CGSize,metrics:HouseSceneMetrics,factor:Double,isFurniture:Bool) {
+        if dragOrigin?.id != id {
+            dragOrigin=HouseStackingRules.resolve(baseSnapshots).first {$0.id == id}
+            dragProjection=metrics
+        }
+        guard let start=dragOrigin,let m=dragProjection else { return }
+        let size=start.metrics
+        let anchor=m.screen(.init(start.worldOrigin.x+size.minimum.x+size.size.x/2,
+                                 start.worldOrigin.y+size.minimum.y+size.size.y/2,
+                                 start.worldOrigin.z+size.minimum.z))
+        let screen=CGPoint(x:anchor.x+translation.width/factor,y:anchor.y+translation.height/factor)
+        let attachment=HouseStackingRules.dragAttachment(child:start,screen:screen,metrics:m,among:baseSnapshots)
+        let next:HouseCell
+        if start.attachment == nil && attachment == nil {
+            let delta=m.delta(.init(width:translation.width/factor,height:translation.height/factor))
+            next = .init(x:start.cell.x+delta.x,y:start.cell.y+delta.y)
+        } else {
+            let point=m.worldPoint(screen),tile=HouseGridConfig.tile
+            next = .init(x:Int((point.x/tile-Double(size.footprint.width)/2).rounded()),
+                         y:Int((point.y/tile-Double(size.footprint.depth)/2).rounded()))
+        }
+        guard candidate != next || candidateAttachment != attachment ||
+            (draggingContainerID != id && draggingDecorationID != id) else { return }
+        if isFurniture { selectedContainerID=id;draggingContainerID=id }
+        else { selectedDecorationID=id;draggingDecorationID=id }
+        candidate=next;candidateAttachment=attachment
+        var proposed=start;proposed.cell=next;proposed.attachment=attachment;proposed.resolvedOrigin=nil
+        do {
+            try HouseStackingRules.validatePlacement(proposed,among:baseSnapshots,layout:house.layout)
+            notice=attachment == nil ? nil:"松手放到桌面"
+        } catch { notice=error.localizedDescription }
+    }
+
+    private func finishDrag() {
+        // 同一轮发布完整状态，避免出现一帧回到旧格子再跳到桌面的闪动。
+        draggingContainerID=nil;draggingDecorationID=nil
+        candidate=nil;candidateAttachment=nil;dragOrigin=nil;dragProjection=nil
+    }
+    private func surfaceOptions(id:String) -> [HouseSurfaceOption] {
+        guard let child=baseSnapshots.first(where:{$0.id == id}) else { return [] }
+        return HouseStackingRules.destinations(child:child,among:baseSnapshots).map { attachment in
+            .init(attachment:attachment,name:supportName(attachment) ?? "桌面")
+        }
+    }
+    private func supportName(_ attachment:HouseSurfaceAttachment?) -> String? {
+        guard let attachment else { return nil }
+        return containers.first {$0.id.uuidString == attachment.supportID}?.name
+    }
+    private func awaitingPlacement(placed:Bool,attachment:HouseSurfaceAttachment?,knownIDs:Set<String>) -> Bool {
+        !placed || attachment.map { !knownIDs.contains($0.supportID) } == true
     }
 
     @ViewBuilder private func roomDraft(metrics m:HouseSceneMetrics,factor:Double) -> some View {
@@ -383,16 +444,21 @@ struct HomeDecorationView: View {
     }
 
     private var drawer:some View {
-        VStack(alignment:.leading,spacing:12) {
+        let knownIDs=Set(baseSnapshots.map(\.id))
+        return VStack(alignment:.leading,spacing:12) {
             Picker("布置类别",selection:$drawerCategory) {
                 ForEach(DrawerCategory.allCases,id:\.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented)
             Text("挑选物品放入空格，也可以拖动屋内物品重新布置。").font(.caption).foregroundStyle(AppTheme.secondaryText)
             ScrollView(.horizontal,showsIndicators:false) {
                 HStack(spacing:12) {
-                    if drawerCategory == .furniture {
-                        tile("添加家具","plus") { showsFurnitureCatalog=true }
-                        ForEach(containers.filter {!$0.isPlaced}) { item in
+                    tile(drawerCategory == .furniture ? "添加容器家具":"添加装饰家具","plus") {
+                        if drawerCategory == .furniture { showsFurnitureCatalog=true } else { showsDecorationCatalog=true }
+                    }
+                        ForEach(containers.filter {
+                            $0.furnitureRole == (drawerCategory == .furniture ? .container:.decorative) &&
+                            awaitingPlacement(placed:$0.isPlaced,attachment:$0.surfaceAttachment,knownIDs:knownIDs)
+                        }) { item in
                             Button { placeStored(item) } label: {
                                 VStack {
                                     PixelFurnitureView(styleID:styleID(item)).frame(width:70,height:72)
@@ -400,9 +466,10 @@ struct HomeDecorationView: View {
                                 }.frame(width:86).padding(8).background(AppTheme.inset,in:RoundedRectangle(cornerRadius:16))
                             }.buttonStyle(.plain)
                         }
-                    } else {
-                        tile("添加装饰","plus") { showsDecorationCatalog=true }
-                        ForEach(decorations.decorations.filter {!$0.isPlaced}) { item in
+                    if drawerCategory == .decorations {
+                        ForEach(decorations.decorations.filter {
+                            awaitingPlacement(placed:$0.isPlaced,attachment:$0.surfaceAttachment,knownIDs:knownIDs)
+                        }) { item in
                             Button { placeStoredDecoration(item) } label: {
                                 VStack {
                                     PixelDecorationView(kind:item.kind,roomStyle:currentRoomImage).frame(width:70,height:72)
@@ -427,13 +494,13 @@ struct HomeDecorationView: View {
         let id=styleID(item),model=HouseFurnitureCatalog.furniture(id,mirrored:item.isMirrored),room=house.layout.rooms[0]
         guard let cell=HousePlacementRules.nearest(to:.init(x:room.x+1,y:room.y+1),footprint:model.footprint,
             layer:HouseFurnitureCatalog.layer(for:id),outdoors:HouseFurnitureCatalog.outdoors(id),
-            layout:house.layout,occupants:occupants) else { notice=HouseRuleError.noSpace.localizedDescription;return }
+            layout:house.layout,occupants:occupants,excluding:item.id.uuidString) else { notice=HouseRuleError.noSpace.localizedDescription;return }
         _=perform(.place(cell),on:item)
     }
     private func placeStoredDecoration(_ item:RoomDecoration) {
         let model=HouseFurnitureCatalog.decoration(item.kind,mirrored:item.isMirrored),room=house.layout.rooms[0]
         guard let cell=HousePlacementRules.nearest(to:.init(x:room.x+1,y:room.y+1),footprint:model.footprint,
-            layer:HouseFurnitureCatalog.layer(for:item.kind),layout:house.layout,occupants:occupants)
+            layer:HouseFurnitureCatalog.layer(for:item.kind),layout:house.layout,occupants:occupants,excluding:item.id)
         else { notice=HouseRuleError.noSpace.localizedDescription;return }
         _=performDecoration(.place(cell),id:item.id)
     }
@@ -445,6 +512,12 @@ struct HomeDecorationView: View {
             return true
         } catch { notice=error.localizedDescription;return false }
     }
+    private func addCatalogEntry(_ source:HouseSceneItem.Source) -> Bool {
+        switch source {
+        case .furniture(let id): return addFurniture(id)
+        case .decoration(let kind): return addDecoration(kind)
+        }
+    }
     private func addDecoration(_ kind:RoomDecoration.Kind) -> Bool {
         do {
             selectedDecorationID=try decorations.add(kind:kind,containers:containers,layout:house.layout)
@@ -455,7 +528,8 @@ struct HomeDecorationView: View {
         do {
             try FurniturePlacementRepository.perform(action,on:item,among:containers,decorations:decorations.decorations,
                 layout:house.layout,in:modelContext)
-            selectedContainerID=item.isPlaced ? item.id.uuidString:nil
+            if case .delete=action { selectedContainerID=nil }
+            else { selectedContainerID=item.isPlaced ? item.id.uuidString:nil }
             notice="已保存。";UIImpactFeedbackGenerator(style:.light).impactOccurred()
             return true
         } catch { notice=error.localizedDescription;return false }
@@ -484,6 +558,7 @@ struct HomeDecorationView: View {
         do {
             let count=try FurniturePlacementRepository.adoptGrid(among:containers,layout:house.layout,in:modelContext)
                 + decorations.adoptGrid(containers:containers,layout:house.layout)
+            try FurniturePlacementRepository.synchronizeDimensions(containers,in:modelContext)
             gridReady=true
             if count > 0 { notice="旧摆放已对齐格子，\(count) 件空间不足的物品放入待布置区。" }
         } catch { notice="格子布局准备未完成：\(error.localizedDescription)" }
@@ -500,7 +575,7 @@ struct HomeDecorationView: View {
     }
 }
 
-/// 家具继续是收纳容器。格子编辑只改变摆放，不改变物品归属或删除容器。
+/// 透明交互层按中央用途规则接收贴纸；装饰家具只参与布置。
 struct FurnitureView:View {
     static let didDropItemsNotification=Notification.Name("didDropItemsNotification")
     let container:Container
@@ -529,19 +604,16 @@ struct FurnitureView:View {
             }
             .dropDestination(for:String.self) { strings,_ in
                 let ids=Set(strings.flatMap {$0.split(separator:",").compactMap {UUID(uuidString:String($0))}})
-                guard !ids.isEmpty else { return false }
                 do {
-                    try modelContext.save()
-                    for id in ids {
-                        let descriptor=FetchDescriptor<Item>(predicate:#Predicate {$0.id == id})
-                        if let item=try modelContext.fetch(descriptor).first { item.container=container;item.updatedDate=Date() }
-                    }
-                    do { try modelContext.save() } catch { modelContext.rollback();throw error }
+                    guard try ItemTransferRepository.move(ids:ids,to:container,in:modelContext)>0 else { return false }
                     UIImpactFeedbackGenerator(style:.medium).impactOccurred()
                     NotificationCenter.default.post(name:Self.didDropItemsNotification,object:nil)
                     return true
-                } catch { dropError="没有收纳成功，请再试一次。";return false }
-            } isTargeted: { isTargeted=$0;onTargetChanged($0) }
+                } catch { dropError=error.localizedDescription;return false }
+            } isTargeted: {
+                let accepts=$0 && container.canReceiveItems
+                isTargeted=accepts;onTargetChanged(accepts)
+            }
             .alert("收纳未完成",isPresented:Binding(get:{dropError != nil},set:{if !$0 {dropError=nil}})) {
                 Button("知道了",role:.cancel) { dropError=nil }
             } message: { Text(dropError ?? "") }
@@ -549,7 +621,7 @@ struct FurnitureView:View {
 }
 
 extension Color {
-    init(hex:String) {
+    nonisolated init(hex:String) {
         let hex=hex.trimmingCharacters(in:CharacterSet.alphanumerics.inverted)
         var value:UInt64=0
         Scanner(string:hex).scanHexInt64(&value)
